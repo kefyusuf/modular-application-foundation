@@ -40,18 +40,24 @@ Contract-first modular monolith
 
 ## Recommended Reading Order
 
-1. [`PRD.md`](./PRD.md) - product requirements and scope.
-2. [`REPO_STANDARD.md`](./REPO_STANDARD.md) - repository structure, naming, module, and documentation rules.
-3. [`docs/architecture/overview.md`](./docs/architecture/overview.md) - architecture map.
-4. [`docs/architecture/module-boundaries.md`](./docs/architecture/module-boundaries.md) - the most important rule set.
+Start here if you want to learn or apply the architecture:
+
+1. [`docs/architecture/overview.md`](./docs/architecture/overview.md) - architecture map.
+2. [`docs/architecture/module-boundaries.md`](./docs/architecture/module-boundaries.md) - the most important rule set.
+3. [`docs/architecture/modular-monolith.md`](./docs/architecture/modular-monolith.md) - default deployment and boundary model.
+4. [`docs/architecture/hexagonal-ddd.md`](./docs/architecture/hexagonal-ddd.md) - domain, ports, adapters, and tactical DDD.
 5. [`docs/standards/api.md`](./docs/standards/api.md) - API-first standard.
 6. [`docs/standards/events.md`](./docs/standards/events.md) - event-driven standard.
 7. [`docs/standards/security.md`](./docs/standards/security.md) - security baseline.
-8. [`templates/MODULE_MANIFEST.template.yml`](./templates/MODULE_MANIFEST.template.yml) - module manifest template.
+8. [`docs/standards/architecture-tests.md`](./docs/standards/architecture-tests.md) - architecture fitness functions.
+9. [`examples/correct-vs-wrong/module-communication.md`](./examples/correct-vs-wrong/module-communication.md) - first practical boundary example.
+10. [`templates/MODULE_MANIFEST.template.yml`](./templates/MODULE_MANIFEST.template.yml) - module manifest template.
+
+Project governance documents such as [`PRD.md`](./PRD.md), [`REPO_STANDARD.md`](./REPO_STANDARD.md), [`CONTRIBUTING.md`](./CONTRIBUTING.md), and [`CHANGELOG.md`](./CHANGELOG.md) are for contributors, maintainers, and release review. They are not required for a first architecture reading.
 
 ## Documentation Map
 
-Root documents:
+Project governance and release documents:
 
 - [`PRD.md`](./PRD.md)
 - [`REPO_STANDARD.md`](./REPO_STANDARD.md)
