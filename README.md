@@ -25,7 +25,7 @@ Contract-first modular monolith
 - Developers learning production-grade backend architecture.
 - Senior engineers designing modular monoliths.
 - Teams that want clean boundaries before considering microservices.
-- AI coding agents such as Codex that need precise implementation instructions.
+- Automation-assisted contributors that need precise repository constraints.
 - Framework communities that want adaptable reference patterns.
 
 ## Core Principles
@@ -48,6 +48,97 @@ Contract-first modular monolith
 6. [`docs/standards/events.md`](./docs/standards/events.md) - event-driven standard.
 7. [`docs/standards/security.md`](./docs/standards/security.md) - security baseline.
 8. [`templates/MODULE_MANIFEST.template.yml`](./templates/MODULE_MANIFEST.template.yml) - module manifest template.
+
+## Documentation Map
+
+Root documents:
+
+- [`PRD.md`](./PRD.md)
+- [`REPO_STANDARD.md`](./REPO_STANDARD.md)
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md)
+- [`CHANGELOG.md`](./CHANGELOG.md)
+- [`docs/releases/v0.1.0.md`](./docs/releases/v0.1.0.md)
+- [`docs/references.md`](./docs/references.md)
+
+Architecture:
+
+- [`docs/architecture/overview.md`](./docs/architecture/overview.md)
+- [`docs/architecture/modular-monolith.md`](./docs/architecture/modular-monolith.md)
+- [`docs/architecture/module-boundaries.md`](./docs/architecture/module-boundaries.md)
+- [`docs/architecture/feature-slice.md`](./docs/architecture/feature-slice.md)
+- [`docs/architecture/hexagonal-ddd.md`](./docs/architecture/hexagonal-ddd.md)
+- [`docs/architecture/event-driven.md`](./docs/architecture/event-driven.md)
+- [`docs/architecture/event-sourcing.md`](./docs/architecture/event-sourcing.md)
+
+Standards:
+
+- [`docs/standards/api.md`](./docs/standards/api.md)
+- [`docs/standards/events.md`](./docs/standards/events.md)
+- [`docs/standards/security.md`](./docs/standards/security.md)
+- [`docs/standards/auth-rbac.md`](./docs/standards/auth-rbac.md)
+- [`docs/standards/persistence.md`](./docs/standards/persistence.md)
+- [`docs/standards/idempotency.md`](./docs/standards/idempotency.md)
+- [`docs/standards/concurrency.md`](./docs/standards/concurrency.md)
+- [`docs/standards/observability.md`](./docs/standards/observability.md)
+- [`docs/standards/testing.md`](./docs/standards/testing.md)
+- [`docs/standards/ci-cd.md`](./docs/standards/ci-cd.md)
+- [`docs/standards/architecture-tests.md`](./docs/standards/architecture-tests.md)
+
+Architecture decisions:
+
+- [`docs/adr/0001-use-contract-first-modular-monolith.md`](./docs/adr/0001-use-contract-first-modular-monolith.md)
+- [`docs/adr/0002-use-openapi-asyncapi-cloudevents.md`](./docs/adr/0002-use-openapi-asyncapi-cloudevents.md)
+
+Kernel contracts:
+
+- [`kernel/contracts/module.md`](./kernel/contracts/module.md)
+- [`kernel/contracts/container.md`](./kernel/contracts/container.md)
+- [`kernel/contracts/command-bus.md`](./kernel/contracts/command-bus.md)
+- [`kernel/contracts/query-bus.md`](./kernel/contracts/query-bus.md)
+- [`kernel/contracts/event-bus.md`](./kernel/contracts/event-bus.md)
+- [`kernel/contracts/policy-evaluator.md`](./kernel/contracts/policy-evaluator.md)
+- [`kernel/contracts/transaction-manager.md`](./kernel/contracts/transaction-manager.md)
+- [`kernel/contracts/idempotency-store.md`](./kernel/contracts/idempotency-store.md)
+- [`kernel/contracts/lock-manager.md`](./kernel/contracts/lock-manager.md)
+- [`kernel/contracts/repository.md`](./kernel/contracts/repository.md)
+- [`kernel/contracts/file-storage.md`](./kernel/contracts/file-storage.md)
+- [`kernel/contracts/observability.md`](./kernel/contracts/observability.md)
+
+Reference modules:
+
+- [`modules/identity/README.md`](./modules/identity/README.md)
+- [`modules/access/README.md`](./modules/access/README.md)
+- [`modules/audit/README.md`](./modules/audit/README.md)
+- [`modules/notification/README.md`](./modules/notification/README.md)
+- [`modules/settings/README.md`](./modules/settings/README.md)
+
+Examples:
+
+- [`examples/correct-vs-wrong/module-communication.md`](./examples/correct-vs-wrong/module-communication.md)
+- [`examples/correct-vs-wrong/repository-pattern.md`](./examples/correct-vs-wrong/repository-pattern.md)
+- [`examples/correct-vs-wrong/rbac-policy.md`](./examples/correct-vs-wrong/rbac-policy.md)
+- [`examples/correct-vs-wrong/event-handling.md`](./examples/correct-vs-wrong/event-handling.md)
+- [`examples/architecture-tests/pseudocode.md`](./examples/architecture-tests/pseudocode.md)
+- [`examples/framework-mapping/laravel.md`](./examples/framework-mapping/laravel.md)
+- [`examples/framework-mapping/go.md`](./examples/framework-mapping/go.md)
+- [`examples/framework-mapping/dotnet.md`](./examples/framework-mapping/dotnet.md)
+- [`examples/framework-mapping/node.md`](./examples/framework-mapping/node.md)
+
+Infrastructure:
+
+- [`infrastructure/README.md`](./infrastructure/README.md)
+- [`infrastructure/ci/README.md`](./infrastructure/ci/README.md)
+- [`infrastructure/docker/README.md`](./infrastructure/docker/README.md)
+- [`infrastructure/monitoring/README.md`](./infrastructure/monitoring/README.md)
+- [`infrastructure/gateway/README.md`](./infrastructure/gateway/README.md)
+- [`infrastructure/cloud/README.md`](./infrastructure/cloud/README.md)
+
+Templates:
+
+- [`templates/ADR_TEMPLATE.md`](./templates/ADR_TEMPLATE.md)
+- [`templates/FEATURE_DOC_TEMPLATE.md`](./templates/FEATURE_DOC_TEMPLATE.md)
+- [`templates/MODULE_README_TEMPLATE.md`](./templates/MODULE_README_TEMPLATE.md)
+- [`templates/PULL_REQUEST_TEMPLATE.md`](./templates/PULL_REQUEST_TEMPLATE.md)
 
 ## Repository Type
 
@@ -112,8 +203,8 @@ This repository should not become:
 - a toy CRUD tutorial;
 - a collection of vague architecture slogans;
 - a repository full of empty TODO-only files;
-- an AI-generated starter that hides trade-offs.
+- a generated starter that hides trade-offs.
 
 ## License
 
-Recommended: MIT for code examples, CC BY 4.0 for written educational content.
+See [`LICENSE`](./LICENSE).

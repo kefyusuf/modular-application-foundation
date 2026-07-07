@@ -1,15 +1,21 @@
 # Changelog
 
-## 0.1.0 - Draft
+## 0.1.0 - 2026-07-07
 
 ### Added
 
-- PRD.
-- Repository standard.
-- Codex implementation plan.
-- Architecture documents.
-- API, event, security, persistence, testing, and CI standards.
-- Module manifest template.
-- Identity, access, audit, notification, and settings module examples.
-- OpenAPI, AsyncAPI, JSON Schema, GraphQL, and protobuf examples.
-- Codex kickoff prompt and phase tasks.
+- Repository foundation, PRD, repository standard, contributing guide, and license.
+- Architecture documentation for modular monolith, module boundaries, feature slices, hexagonal DDD, event-driven integration, and event sourcing.
+- Engineering standards for API design, events, security, auth/RBAC, persistence, idempotency, concurrency, observability, testing, CI/CD, and architecture fitness functions.
+- Machine-readable contract examples for OpenAPI, AsyncAPI, JSON Schema, GraphQL, and protobuf.
+- Reference module catalog for identity, access, audit, notification, and settings.
+- Framework-neutral kernel contracts for module lifecycle, buses, container, policy evaluation, transactions, idempotency, locking, repositories, file storage, and observability.
+- Correct-vs-wrong examples, architecture-test pseudocode, and framework mapping guides for Laravel, Go, .NET, and Node.js/TypeScript.
+- Infrastructure guidance for Docker, CI, monitoring, gateway behavior, and cloud adapters.
+- v0.1 release readiness notes.
+
+### Known Limitations
+
+- The repository is documentation-first and does not include a runnable application.
+- CI workflow files, package manifests, container manifests, and deployment automation are intentionally not included in v0.1.
+- Framework-specific starter kits are future optional adapter work, not part of the foundation release.
