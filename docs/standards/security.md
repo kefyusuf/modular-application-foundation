@@ -4,6 +4,19 @@
 
 Define security controls that every implementation must consider from the start.
 
+## Baseline Rules
+
+- Use OWASP ASVS as the application security verification baseline.
+- Authenticate every protected interface and authorize every sensitive action.
+- Enforce object-level authorization in application logic, not only at routes.
+- Use policy-based authorization for permissions and scoped roles.
+- Follow JWT BCP guidance: allowlist algorithms, validate issuer/audience/time claims, and keep tokens short-lived.
+- Follow OAuth 2.0 Security Best Current Practice for OAuth/OIDC flows.
+- Protect cookie-authenticated unsafe browser requests with CSRF controls.
+- Rate-limit login, reset, token, and other abuse-prone endpoints.
+- Keep secrets out of code, logs, test fixtures, and generated docs.
+- Audit security-sensitive actions.
+
 ## Security Baseline
 
 Core controls:
@@ -102,6 +115,17 @@ Security-sensitive actions must be audit logged:
 - data export;
 - access denied;
 - token revocation.
+
+## Common Mistakes
+
+- Checking only `user.role == "admin"` instead of evaluating policies.
+- Trusting JWT claims without issuer, audience, expiration, and key validation.
+- Using long-lived access tokens without refresh token rotation.
+- Applying CSRF rules only to forms while cookie-authenticated APIs remain unsafe.
+- Logging tokens, passwords, reset links, or secret values.
+- Treating CORS as an authorization control.
+- Forgetting rate limits on login, password reset, and token refresh endpoints.
+- Auditing success paths but not failures or denied access.
 
 ## Verification Checklist
 

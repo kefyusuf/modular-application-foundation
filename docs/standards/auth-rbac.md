@@ -4,6 +4,17 @@
 
 Define the identity and access-control foundation required by most applications.
 
+## Baseline Rules
+
+- Identity owns credentials, sessions, tokens, and account lifecycle.
+- Access owns roles, permissions, assignments, scopes, and policy evaluation.
+- Roles must be data-driven and assignable under explicit scopes.
+- Permissions must be named by module, resource, and action.
+- Business logic must ask a policy evaluator, not inspect role strings.
+- Panel access must be permission-based.
+- Session revocation and refresh token rotation must be supported.
+- MFA and passkeys must remain extension points, even if not implemented initially.
+
 ## Identity Responsibilities
 
 The identity module owns:
@@ -73,6 +84,16 @@ The auth core should stay shared. Role-specific screens are UI shells over the s
 /vendor/login    -> requires vendor panel context
 /customer/login  -> customer context
 ```
+
+## Common Mistakes
+
+- Creating separate auth implementations for each role or panel.
+- Hardcoding role names inside business workflows.
+- Treating panel access as the same thing as business permission.
+- Storing permissions only in code with no data-driven assignment model.
+- Forgetting scoped roles for tenant, organization, project, or workspace contexts.
+- Caching permissions without invalidation after assignment changes.
+- Letting identity own authorization decisions that belong to access.
 
 ## Verification Checklist
 

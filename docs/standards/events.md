@@ -4,6 +4,16 @@
 
 Define event naming, versioning, envelope, publishing, consuming, retry, and replay rules.
 
+## Baseline Rules
+
+- Integration events are public contracts and must be versioned.
+- Event names must describe past-tense facts, not commands.
+- Event payloads must expose stable contract data, not private entities.
+- Producers must use outbox for events emitted with state changes.
+- Consumers must use inbox/idempotency to handle duplicate delivery.
+- Retry and dead-letter behavior must be defined before production use.
+- Replay must not trigger external side effects unless explicitly designed.
+
 ## Event Types
 
 ```txt
@@ -86,6 +96,16 @@ During replay:
 - emails/SMS/webhooks are not sent;
 - projections may be rebuilt;
 - audit replay must be marked as replay, not original action.
+
+## Common Mistakes
+
+- Publishing events before the transaction commits.
+- Using events as synchronous RPC.
+- Publishing unversioned event types.
+- Dumping aggregate internals into public event payloads.
+- Assuming exactly-once delivery.
+- Retrying poison messages forever.
+- Replaying historical events and sending emails, SMS, or webhooks again.
 
 ## Verification Checklist
 

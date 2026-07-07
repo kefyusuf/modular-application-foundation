@@ -4,6 +4,16 @@
 
 Define testing layers needed for a production-grade modular application foundation.
 
+## Baseline Rules
+
+- Domain and application behavior must be unit-testable without infrastructure.
+- Adapters must have integration tests against realistic dependencies or fakes with contract proof.
+- Public APIs and event schemas must have contract tests.
+- Architecture tests must enforce dependency direction and module boundaries.
+- Security tests must cover authentication, authorization, CSRF, JWT, rate limits, and object-level access.
+- Concurrency and idempotency behavior must be tested for critical workflows.
+- Event replay and projection rebuild behavior must be tested where event sourcing or projections exist.
+
 ## Test Types
 
 | Type | Purpose |
@@ -27,6 +37,16 @@ interfaces must not call repositories directly
 events must be versioned
 controllers must return response DTOs, not domain entities
 ```
+
+## Common Mistakes
+
+- Testing only controllers and skipping domain/application behavior.
+- Mocking every adapter and never proving real integration behavior.
+- Treating contract docs as tests without machine-readable validation.
+- Skipping negative authorization and object-level authorization cases.
+- Ignoring duplicate delivery, retry, and race-condition cases.
+- Testing happy-path event handling but not replay or dead-letter behavior.
+- Allowing architecture rules to exist only in review comments.
 
 ## Verification Checklist
 

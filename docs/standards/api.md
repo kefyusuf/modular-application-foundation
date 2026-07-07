@@ -4,6 +4,16 @@
 
 Define the API-first standard for public, admin, mobile, partner, and internal interfaces.
 
+## Baseline Rules
+
+- REST documented with OpenAPI is the primary public API style.
+- Every endpoint must map to a module and capability.
+- Request and response shapes must use DTOs or contracts, not private domain entities.
+- Errors must follow RFC 9457 Problem Details.
+- Unsafe retryable operations must define idempotency behavior.
+- Authentication, object-level authorization, rate limits, and audit needs must be defined per operation.
+- Public API changes must be reviewed for backward compatibility before implementation.
+
 ## API Priority
 
 | Priority | API Type | Role |
@@ -112,6 +122,16 @@ GraphQL should be used for read aggregation or BFF needs, not as the default rep
 ## gRPC Positioning
 
 gRPC is suitable for internal high-performance typed communication, streaming, and service-to-service calls after boundaries are stable.
+
+## Common Mistakes
+
+- Returning domain entities directly from controllers.
+- Treating GraphQL as a default replacement for all REST APIs.
+- Adding endpoints before module ownership is clear.
+- Changing response or error shape without a versioning decision.
+- Using HTTP status codes without machine-readable Problem Details.
+- Skipping object-level authorization because route-level auth exists.
+- Making idempotency optional for payment-like or retryable unsafe operations.
 
 ## Verification Checklist
 
