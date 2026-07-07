@@ -41,7 +41,7 @@ Add only when the change affects visual docs, diagrams, or generated assets.
 
 ## Checklist
 
-- [ ] I followed `REPO_STANDARD.md`.
+- [ ] I followed `README.md` and `docs/standards/README.md`.
 - [ ] I preserved module boundaries.
 - [ ] I avoided framework lock-in in core docs.
 - [ ] I added trade-offs where relevant.

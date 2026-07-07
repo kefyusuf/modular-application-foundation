@@ -29,7 +29,7 @@ Contributions should not make the repository framework-specific at the core leve
 
 Before submitting:
 
-- [ ] I followed `REPO_STANDARD.md`.
+- [ ] I followed `README.md` and `docs/standards/README.md`.
 - [ ] I did not introduce framework lock-in to the core.
 - [ ] I included trade-offs and common mistakes where relevant.
 - [ ] I preserved module boundaries.

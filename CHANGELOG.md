@@ -4,7 +4,7 @@
 
 ### Added
 
-- Repository foundation, PRD, repository standard, contributing guide, and license.
+- Repository foundation, contributing guide, and license.
 - Architecture documentation for modular monolith, module boundaries, feature slices, hexagonal DDD, event-driven integration, and event sourcing.
 - Engineering standards for API design, events, security, auth/RBAC, persistence, idempotency, concurrency, observability, testing, CI/CD, and architecture fitness functions.
 - Machine-readable contract examples for OpenAPI, AsyncAPI, JSON Schema, GraphQL, and protobuf.
@@ -13,6 +13,7 @@
 - Correct-vs-wrong examples, architecture-test pseudocode, and framework mapping guides for Laravel, Go, .NET, and Node.js/TypeScript.
 - Infrastructure guidance for Docker, CI, monitoring, gateway behavior, and cloud adapters.
 - v0.1 release readiness notes.
+- Standards directory index and reading path.
 
 ### Known Limitations
 
