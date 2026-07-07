@@ -22,3 +22,17 @@ This guide maps the framework-agnostic architecture to Go concepts without makin
 ## Rule
 
 Go packages must preserve module boundary rules. Package imports are architecture decisions.
+
+## Boundary Notes
+
+- Domain packages should not import HTTP, SQL, queue, or framework packages.
+- Application packages should depend on interfaces, not concrete adapters.
+- Internal package visibility can help enforce module boundaries.
+- Broker consumers still need durable inbox/idempotency.
+
+## Verification
+
+- [ ] Do package imports follow module dependency direction?
+- [ ] Are adapters behind interfaces?
+- [ ] Are generated SQL or ORM types kept out of domain packages?
+- [ ] Are event consumers idempotent and observable?

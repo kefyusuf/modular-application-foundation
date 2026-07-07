@@ -36,3 +36,5 @@ order asks policy.can(actor, "order.order.cancel", order, context)
 - [ ] Is the accessed type under another module's `public/` folder?
 - [ ] Is the dependency declared in `module.manifest.yml`?
 - [ ] Is there a contract/event/projection instead of private import?
+- [ ] Does the caller avoid another module's infrastructure adapter?
+- [ ] Can the dependency be replaced during future extraction?

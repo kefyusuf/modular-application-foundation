@@ -22,3 +22,17 @@ This guide maps the framework-agnostic architecture to Laravel concepts without 
 ## Rule
 
 Laravel is an adapter implementation detail. Domain and application rules remain framework-neutral.
+
+## Boundary Notes
+
+- Domain code should not depend on Eloquent models, requests, facades, or jobs.
+- Application features may use ports that Laravel adapters implement.
+- Integration events still require outbox/inbox even if Laravel events are used internally.
+- Policies should wrap the foundation `PolicyEvaluator` contract instead of hardcoded role checks.
+
+## Verification
+
+- [ ] Can domain tests run without Laravel bootstrapping?
+- [ ] Are Eloquent models hidden behind repositories or query adapters?
+- [ ] Are service providers binding public contracts, not private cross-module classes?
+- [ ] Are queued listeners idempotent?
