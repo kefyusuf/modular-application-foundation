@@ -1,0 +1,95 @@
+openapi: 3.2.0
+info:
+  title: Modular Application Foundation Public API
+  version: 1.0.0
+  description: Minimal contract example for the documentation-first foundation.
+servers:
+  - url: https://api.example.com/api/v1
+paths:
+  /identity/auth/login:
+    post:
+      operationId: login
+      summary: Authenticate a user
+      tags: [identity]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    LoginResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [access_token, refresh_token, token_type, expires_in]
+          properties:
+            access_token:
+              type: string
+            refresh_token:
+              type: string
+            token_type:
+              type: string
+              const: Bearer
+            expires_in:
+              type: integer
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    ResponseMeta:
+      type: object
+      properties:
+        request_id:
+          type: string
+        correlation_id:
+          type: string
+    ProblemDetails:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        request_id:
+          type: string
+security:
+  - bearerAuth: []

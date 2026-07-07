@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package foundation.identity.v1;
+
+service IdentityService {
+  rpc GetCurrentUser(GetCurrentUserRequest) returns (GetCurrentUserResponse);
+}
+
+message GetCurrentUserRequest {
+  string access_token = 1;
+}
+
+message GetCurrentUserResponse {
+  string user_id = 1;
+  string email = 2;
+  repeated string permissions = 3;
+}

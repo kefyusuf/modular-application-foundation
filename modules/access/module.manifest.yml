@@ -1,0 +1,62 @@
+name: access
+slug: access
+type: core
+status: enabled
+version: 1.0.0
+
+summary: >
+  Owns roles, permissions, scoped assignments, and policy evaluation.
+
+exports:
+  contracts:
+    - PolicyEvaluator
+    - PermissionReader
+    - RoleAssignmentManager
+  events:
+    - access.role.assigned.v1
+    - access.role.revoked.v1
+    - access.permission.changed.v1
+  permissions:
+    - access.role.read
+    - access.role.create
+    - access.role.update
+    - access.role.assign
+    - access.permission.read
+
+requires:
+  capabilities:
+    - audit.log
+  infrastructure:
+    - postgres
+    - redis optional
+
+interfaces:
+  rest:
+    enabled: true
+    prefix: /api/v1/access
+
+persistence:
+  source_of_truth: postgres
+  schema: access
+  owns:
+    - access.roles
+    - access.permissions
+    - access.role_assignments
+  cross_module_foreign_keys_allowed: false
+
+events:
+  publishes:
+    - access.role.assigned.v1
+    - access.role.revoked.v1
+  subscribes:
+    - identity.user.registered.v1
+  outbox_required: true
+  inbox_required: true
+
+security:
+  authentication_required: true
+  authorization: policy
+  csrf: conditional
+  rate_limit: standard
+  audit: true
+  pii: false

@@ -1,0 +1,50 @@
+name: audit
+slug: audit
+type: core
+status: enabled
+version: 1.0.0
+
+summary: >
+  Owns append-only audit logs and security-relevant event records.
+
+exports:
+  contracts:
+    - AuditLogger
+    - AuditReader
+  events:
+    - audit.security_event.recorded.v1
+  permissions:
+    - audit.log.read
+    - audit.log.export
+
+requires:
+  capabilities: []
+  infrastructure:
+    - postgres
+
+interfaces:
+  rest:
+    enabled: true
+    prefix: /api/v1/audit
+
+persistence:
+  source_of_truth: postgres
+  schema: audit
+  owns:
+    - audit.audit_logs
+  cross_module_foreign_keys_allowed: false
+
+events:
+  publishes:
+    - audit.security_event.recorded.v1
+  subscribes: []
+  outbox_required: true
+  inbox_required: false
+
+security:
+  authentication_required: true
+  authorization: policy
+  csrf: conditional
+  rate_limit: strict
+  audit: true
+  pii: true

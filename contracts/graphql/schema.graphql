@@ -1,0 +1,12 @@
+"""
+Minimal GraphQL schema example. GraphQL is positioned as a read aggregation or BFF layer, not the primary write model.
+"""
+type Query {
+  me: CurrentUser
+}
+
+type CurrentUser {
+  id: ID!
+  email: String!
+  permissions: [String!]!
+}

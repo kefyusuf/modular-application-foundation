@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/cloudevent-envelope.schema.json",
+  "title": "CloudEvent Envelope",
+  "type": "object",
+  "required": ["specversion", "id", "source", "type", "subject", "time", "datacontenttype", "data"],
+  "properties": {
+    "specversion": { "type": "string", "const": "1.0" },
+    "id": { "type": "string" },
+    "source": { "type": "string" },
+    "type": { "type": "string" },
+    "subject": { "type": "string" },
+    "time": { "type": "string", "format": "date-time" },
+    "datacontenttype": { "type": "string" },
+    "correlationid": { "type": "string" },
+    "causationid": { "type": "string" },
+    "tenantid": { "type": "string" },
+    "actorid": { "type": "string" },
+    "data": { "type": "object" }
+  },
+  "additionalProperties": true
+}

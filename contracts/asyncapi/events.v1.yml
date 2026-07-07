@@ -1,0 +1,64 @@
+asyncapi: 3.1.0
+info:
+  title: Modular Application Foundation Events
+  version: 1.0.0
+  description: Minimal AsyncAPI event contract example.
+channels:
+  identity.user.registered.v1:
+    address: identity.user.registered.v1
+    messages:
+      UserRegistered:
+        $ref: '#/components/messages/UserRegistered'
+operations:
+  publishUserRegistered:
+    action: send
+    channel:
+      $ref: '#/channels/identity.user.registered.v1'
+    messages:
+      - $ref: '#/channels/identity.user.registered.v1/messages/UserRegistered'
+components:
+  messages:
+    UserRegistered:
+      name: UserRegistered
+      title: User Registered
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/CloudEventUserRegistered'
+  schemas:
+    CloudEventUserRegistered:
+      type: object
+      required: [specversion, id, source, type, subject, time, datacontenttype, data]
+      properties:
+        specversion:
+          type: string
+          const: '1.0'
+        id:
+          type: string
+        source:
+          type: string
+          example: mod://identity
+        type:
+          type: string
+          const: identity.user.registered.v1
+        subject:
+          type: string
+          example: user/usr_123
+        time:
+          type: string
+          format: date-time
+        datacontenttype:
+          type: string
+          const: application/json
+        correlationid:
+          type: string
+        causationid:
+          type: string
+        data:
+          type: object
+          required: [user_id, email]
+          properties:
+            user_id:
+              type: string
+            email:
+              type: string
+              format: email

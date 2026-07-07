@@ -1,0 +1,53 @@
+name: settings
+slug: settings
+type: core
+status: enabled
+version: 1.0.0
+
+summary: >
+  Owns application, module, tenant, and feature configuration.
+
+exports:
+  contracts:
+    - SettingsReader
+    - FeatureFlagEvaluator
+  events:
+    - settings.value.changed.v1
+  permissions:
+    - settings.value.read
+    - settings.value.update
+
+requires:
+  capabilities:
+    - audit.log
+  infrastructure:
+    - postgres
+    - redis optional
+
+interfaces:
+  rest:
+    enabled: true
+    prefix: /api/v1/settings
+
+persistence:
+  source_of_truth: postgres
+  schema: settings
+  owns:
+    - settings.values
+    - settings.feature_flags
+  cross_module_foreign_keys_allowed: false
+
+events:
+  publishes:
+    - settings.value.changed.v1
+  subscribes: []
+  outbox_required: true
+  inbox_required: false
+
+security:
+  authentication_required: true
+  authorization: policy
+  csrf: conditional
+  rate_limit: standard
+  audit: true
+  pii: false

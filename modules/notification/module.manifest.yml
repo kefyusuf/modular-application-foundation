@@ -1,0 +1,55 @@
+name: notification
+slug: notification
+type: core
+status: enabled
+version: 1.0.0
+
+summary: >
+  Owns notification orchestration across email, SMS, push, and webhooks.
+
+exports:
+  contracts:
+    - NotificationSender
+  events:
+    - notification.message.sent.v1
+    - notification.message.failed.v1
+  permissions:
+    - notification.message.read
+    - notification.template.manage
+
+requires:
+  capabilities:
+    - audit.log
+  infrastructure:
+    - postgres
+    - queue
+
+interfaces:
+  rest:
+    enabled: true
+    prefix: /api/v1/notification
+
+persistence:
+  source_of_truth: postgres
+  schema: notification
+  owns:
+    - notification.messages
+    - notification.templates
+  cross_module_foreign_keys_allowed: false
+
+events:
+  publishes:
+    - notification.message.sent.v1
+    - notification.message.failed.v1
+  subscribes:
+    - identity.user.registered.v1
+  outbox_required: true
+  inbox_required: true
+
+security:
+  authentication_required: true
+  authorization: policy
+  csrf: conditional
+  rate_limit: standard
+  audit: true
+  pii: true

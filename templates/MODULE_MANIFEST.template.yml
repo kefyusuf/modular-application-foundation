@@ -1,0 +1,87 @@
+name: example-module
+slug: example-module
+type: core # core | domain | adapter | experimental
+status: enabled # enabled | disabled | experimental | deprecated
+version: 1.0.0
+
+summary: >
+  Short description of what this module owns and why it exists.
+
+ownership:
+  team: platform
+  domain_owner: unknown
+  technical_owner: unknown
+
+exports:
+  contracts:
+    - ExampleReader
+    - ExampleCapability
+  commands:
+    - example.create.v1
+  queries:
+    - example.read.v1
+  events:
+    - example.resource.created.v1
+  permissions:
+    - example.resource.read
+    - example.resource.create
+    - example.resource.update
+    - example.resource.delete
+
+requires:
+  capabilities:
+    - audit.log
+  modules:
+    - access
+  infrastructure:
+    - postgres
+    - redis optional
+
+interfaces:
+  rest:
+    enabled: true
+    prefix: /api/v1/example
+  graphql:
+    enabled: false
+  grpc:
+    enabled: false
+  cli:
+    enabled: false
+  webhooks:
+    enabled: false
+
+persistence:
+  source_of_truth: postgres
+  schema: example
+  owns:
+    - example.resources
+  reads_from_projections:
+    - identity.user_summary optional
+  cross_module_foreign_keys_allowed: false
+
+events:
+  publishes:
+    - example.resource.created.v1
+  subscribes:
+    - identity.user.registered.v1
+  outbox_required: true
+  inbox_required: true
+
+security:
+  authentication_required: true
+  authorization: policy
+  csrf: conditional
+  rate_limit: standard
+  audit: true
+  pii: false
+
+observability:
+  logs: structured
+  metrics: true
+  traces: true
+  audit_events: true
+
+lifecycle:
+  introduced_in: 0.1.0
+  deprecated_in: null
+  replacement: null

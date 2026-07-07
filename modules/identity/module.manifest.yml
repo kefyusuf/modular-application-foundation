@@ -1,0 +1,78 @@
+name: identity
+slug: identity
+type: core
+status: enabled
+version: 1.0.0
+
+summary: >
+  Owns authentication identity, credentials, sessions, tokens, and account lifecycle flows.
+
+exports:
+  contracts:
+    - IdentityReader
+    - Authenticator
+    - TokenIssuer
+    - SessionManager
+  commands:
+    - identity.register_user.v1
+    - identity.login.v1
+    - identity.refresh_token.v1
+    - identity.reset_password.v1
+  queries:
+    - identity.current_user.v1
+  events:
+    - identity.user.registered.v1
+    - identity.user.login_succeeded.v1
+    - identity.user.login_failed.v1
+    - identity.user.password_reset_requested.v1
+    - identity.session.revoked.v1
+  permissions:
+    - identity.user.read
+    - identity.user.create
+    - identity.user.update
+    - identity.session.revoke
+
+requires:
+  capabilities:
+    - audit.log
+    - notification.send
+    - access.evaluate_policy
+  infrastructure:
+    - postgres
+    - redis optional
+
+interfaces:
+  rest:
+    enabled: true
+    prefix: /api/v1/identity
+  graphql:
+    enabled: false
+  grpc:
+    enabled: false
+
+persistence:
+  source_of_truth: postgres
+  schema: identity
+  owns:
+    - identity.users
+    - identity.credentials
+    - identity.sessions
+    - identity.refresh_tokens
+  cross_module_foreign_keys_allowed: false
+
+events:
+  publishes:
+    - identity.user.registered.v1
+    - identity.user.login_succeeded.v1
+    - identity.user.login_failed.v1
+  subscribes: []
+  outbox_required: true
+  inbox_required: true
+
+security:
+  authentication_required: conditional
+  authorization: policy
+  csrf: conditional
+  rate_limit: strict
+  audit: true
+  pii: true
