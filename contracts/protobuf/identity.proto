@@ -7,7 +7,9 @@ service IdentityService {
 }
 
 message GetCurrentUserRequest {
-  string access_token = 1;
+  string actor_id = 1;
+  string tenant_id = 2;
+  repeated string scopes = 3;
 }
 
 message GetCurrentUserResponse {

@@ -2,7 +2,7 @@ asyncapi: 3.1.0
 info:
   title: Modular Application Foundation Events
   version: 1.0.0
-  description: Minimal AsyncAPI event contract example.
+  description: Minimal AsyncAPI event contract example using a CloudEvents-style envelope.
 channels:
   identity.user.registered.v1:
     address: identity.user.registered.v1
@@ -27,7 +27,8 @@ components:
   schemas:
     CloudEventUserRegistered:
       type: object
-      required: [specversion, id, source, type, subject, time, datacontenttype, data]
+      required: [specversion, id, source, type, subject, time, datacontenttype, correlationid, data]
+      additionalProperties: true
       properties:
         specversion:
           type: string
@@ -53,9 +54,16 @@ components:
           type: string
         causationid:
           type: string
+        tenantid:
+          type: string
+        actorid:
+          type: string
+        traceparent:
+          type: string
         data:
           type: object
           required: [user_id, email]
+          additionalProperties: false
           properties:
             user_id:
               type: string

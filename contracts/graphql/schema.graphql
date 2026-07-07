@@ -9,4 +9,11 @@ type CurrentUser {
   id: ID!
   email: String!
   permissions: [String!]!
+  context: AuthContext!
+}
+
+type AuthContext {
+  actorId: ID!
+  tenantId: ID
+  scopes: [String!]!
 }

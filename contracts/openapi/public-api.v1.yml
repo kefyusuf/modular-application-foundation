@@ -2,7 +2,7 @@ openapi: 3.2.0
 info:
   title: Modular Application Foundation Public API
   version: 1.0.0
-  description: Minimal contract example for the documentation-first foundation.
+  description: Minimal contract-first public API example for the documentation-first foundation.
 servers:
   - url: https://api.example.com/api/v1
 paths:
@@ -12,6 +12,9 @@ paths:
       summary: Authenticate a user
       tags: [identity]
       security: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -31,16 +34,59 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
+  /identity/me:
+    get:
+      operationId: getCurrentUser
+      summary: Get the current authenticated identity summary
+      tags: [identity]
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Current identity summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUserResponse'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  parameters:
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Caller-provided request identifier used for logs and support.
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Correlation identifier propagated across commands, events, and jobs.
   schemas:
     LoginRequest:
       type: object
       required: [email, password]
+      additionalProperties: false
       properties:
         email:
           type: string
@@ -51,10 +97,12 @@ components:
     LoginResponse:
       type: object
       required: [data, meta]
+      additionalProperties: false
       properties:
         data:
           type: object
           required: [access_token, refresh_token, token_type, expires_in]
+          additionalProperties: false
           properties:
             access_token:
               type: string
@@ -67,8 +115,35 @@ components:
               type: integer
         meta:
           $ref: '#/components/schemas/ResponseMeta'
+    CurrentUserResponse:
+      type: object
+      required: [data, meta]
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/CurrentUser'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    CurrentUser:
+      type: object
+      required: [id, email, permissions]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          example: usr_123
+        email:
+          type: string
+          format: email
+        permissions:
+          type: array
+          items:
+            type: string
+          example:
+            - identity.user.read
     ResponseMeta:
       type: object
+      additionalProperties: false
       properties:
         request_id:
           type: string
@@ -77,6 +152,7 @@ components:
     ProblemDetails:
       type: object
       required: [type, title, status]
+      additionalProperties: true
       properties:
         type:
           type: string
@@ -90,6 +166,8 @@ components:
         instance:
           type: string
         request_id:
+          type: string
+        correlation_id:
           type: string
 security:
   - bearerAuth: []
