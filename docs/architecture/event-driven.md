@@ -4,6 +4,28 @@
 
 Events allow modules to react to facts without hardcoded coupling.
 
+In this foundation, events are integration contracts. They should be treated with the same care as public APIs.
+
+## When to Use
+
+Use events when:
+
+- another module needs to react to a completed business fact;
+- the publisher should not know all downstream consumers;
+- side effects can happen asynchronously;
+- a read model or projection needs to be updated after a state change;
+- cross-system integration should avoid direct private data access.
+
+## When Not to Use
+
+Do not use events when:
+
+- the caller needs an immediate answer;
+- the operation must be part of the same consistency boundary;
+- the event would only hide a synchronous RPC call;
+- consumers are not idempotent;
+- the event name or schema is not stable enough to publish.
+
 ## Event Types
 
 | Type | Scope | Purpose |
@@ -53,6 +75,14 @@ Any integration event produced by a business transaction must be saved in the sa
 
 Every consumer must be idempotent.
 
+## Trade-offs
+
+- Events reduce direct coupling, but they introduce eventual consistency.
+- Publishers can stay simple, but consumers need idempotency, retries, and observability.
+- Event contracts support future extraction, but breaking changes must be versioned.
+- Outbox/inbox patterns improve reliability, but they add storage and processing complexity.
+- Events are useful for integration, but they should not replace clear command/query APIs.
+
 ## Common Mistakes
 
 - Publishing events before transaction commit.
@@ -68,3 +98,5 @@ Every consumer must be idempotent.
 - [ ] Is the event published through outbox?
 - [ ] Is the consumer idempotent?
 - [ ] Can side effects be disabled during replay?
+- [ ] Is the event a fact rather than a command?
+- [ ] Is the payload a public contract instead of a private entity dump?

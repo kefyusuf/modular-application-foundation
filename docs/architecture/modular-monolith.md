@@ -4,6 +4,8 @@
 
 A modular monolith is a single deployable application with strong internal module boundaries.
 
+The goal is to keep operational simplicity while preventing the codebase from becoming one large shared model.
+
 ## When to Use
 
 Use this when:
@@ -34,6 +36,23 @@ Avoid this as the final shape when:
 - Infrastructure is adapter-based.
 - Extraction readiness is a benefit, not the first goal.
 
+## Trade-offs
+
+- Deployment is simpler than microservices, but module boundaries must be enforced inside one process.
+- Local transactions are easier, but cross-module writes still need clear ownership rules.
+- Refactoring is faster before extraction, but careless shared code can create hidden coupling.
+- Teams can delay infrastructure complexity, but they must still design public contracts early.
+- Observability is simpler at runtime, but module-level logs, traces, and metrics still matter.
+
+## Common Mistakes
+
+- Treating modules as folders while sharing the same entities everywhere.
+- Letting controllers or jobs call another module's repositories directly.
+- Using a shared database schema as the real integration layer.
+- Adding a message broker before defining stable integration events.
+- Extracting a module because it is large, not because its boundary is stable.
+- Claiming microservice readiness without owned data, contracts, and observability.
+
 ## Microservice Extraction Rule
 
 A module can be extracted only if:
@@ -51,3 +70,5 @@ A module can be extracted only if:
 - [ ] Can modules be reasoned about independently?
 - [ ] Are module dependencies explicit?
 - [ ] Are integration points contract-first?
+- [ ] Does each module own its private model and persistence rules?
+- [ ] Is microservice extraction treated as optional future work?
