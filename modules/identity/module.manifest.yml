@@ -7,6 +7,23 @@ version: 1.0.0
 summary: >
   Owns authentication identity, credentials, sessions, tokens, and account lifecycle flows.
 
+ownership:
+  team: platform
+  domain_owner: security
+  technical_owner: platform
+
+dependency_rules:
+  may_import:
+    - own_domain
+    - own_application
+    - own_public_contracts
+    - kernel_contracts
+  must_not_import:
+    - access_private_internals
+    - audit_private_internals
+    - notification_private_internals
+    - framework_runtime_from_domain
+
 exports:
   contracts:
     - IdentityReader
@@ -37,9 +54,17 @@ requires:
     - audit.log
     - notification.send
     - access.evaluate_policy
+  modules:
+    - audit
+    - notification
+    - access
   infrastructure:
     - postgres
     - redis optional
+  contracts:
+    - audit.AuditLogger
+    - notification.NotificationSender
+    - access.PolicyEvaluator
 
 interfaces:
   rest:
@@ -48,6 +73,10 @@ interfaces:
   graphql:
     enabled: false
   grpc:
+    enabled: false
+  webhooks:
+    enabled: false
+  cli:
     enabled: false
 
 persistence:
@@ -58,6 +87,7 @@ persistence:
     - identity.credentials
     - identity.sessions
     - identity.refresh_tokens
+  reads_from_projections: []
   cross_module_foreign_keys_allowed: false
 
 events:
@@ -65,6 +95,7 @@ events:
     - identity.user.registered.v1
     - identity.user.login_succeeded.v1
     - identity.user.login_failed.v1
+    - identity.session.revoked.v1
   subscribes: []
   outbox_required: true
   inbox_required: true
@@ -76,3 +107,30 @@ security:
   rate_limit: strict
   audit: true
   pii: true
+  object_level_authorization: true
+  secret_access: true
+
+observability:
+  logs: structured
+  metrics: true
+  traces: true
+  audit_events: true
+  required_context:
+    - request_id
+    - correlation_id
+    - actor_id
+    - tenant_id
+    - module
+
+lifecycle:
+  introduced_in: 0.1.0
+  deprecated_in: null
+  replacement: null
+
+testing:
+  unit: true
+  integration: true
+  contract: true
+  architecture: true
+  security: true
+  concurrency: true

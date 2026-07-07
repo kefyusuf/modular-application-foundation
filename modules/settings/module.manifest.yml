@@ -7,27 +7,63 @@ version: 1.0.0
 summary: >
   Owns application, module, tenant, and feature configuration.
 
+ownership:
+  team: platform
+  domain_owner: platform
+  technical_owner: platform
+
+dependency_rules:
+  may_import:
+    - own_domain
+    - own_application
+    - own_public_contracts
+    - kernel_contracts
+  must_not_import:
+    - other_module_private_domain
+    - other_module_private_infrastructure
+    - framework_runtime_from_domain
+    - database_adapter_from_application
+
 exports:
   contracts:
     - SettingsReader
     - FeatureFlagEvaluator
+  commands:
+    - settings.update_value.v1
+    - settings.update_feature_flag.v1
+  queries:
+    - settings.read_value.v1
   events:
     - settings.value.changed.v1
+    - settings.feature_flag.changed.v1
   permissions:
     - settings.value.read
     - settings.value.update
+    - settings.feature_flag.manage
 
 requires:
   capabilities:
     - audit.log
+  modules:
+    - audit
   infrastructure:
     - postgres
     - redis optional
+  contracts:
+    - audit.AuditLogger
 
 interfaces:
   rest:
     enabled: true
     prefix: /api/v1/settings
+  graphql:
+    enabled: false
+  grpc:
+    enabled: false
+  webhooks:
+    enabled: false
+  cli:
+    enabled: false
 
 persistence:
   source_of_truth: postgres
@@ -35,11 +71,13 @@ persistence:
   owns:
     - settings.values
     - settings.feature_flags
+  reads_from_projections: []
   cross_module_foreign_keys_allowed: false
 
 events:
   publishes:
     - settings.value.changed.v1
+    - settings.feature_flag.changed.v1
   subscribes: []
   outbox_required: true
   inbox_required: false
@@ -51,3 +89,30 @@ security:
   rate_limit: standard
   audit: true
   pii: false
+  object_level_authorization: true
+  secret_access: false
+
+observability:
+  logs: structured
+  metrics: true
+  traces: true
+  audit_events: true
+  required_context:
+    - request_id
+    - correlation_id
+    - actor_id
+    - tenant_id
+    - module
+
+lifecycle:
+  introduced_in: 0.1.0
+  deprecated_in: null
+  replacement: null
+
+testing:
+  unit: true
+  integration: true
+  contract: true
+  architecture: true
+  security: true
+  concurrency: false

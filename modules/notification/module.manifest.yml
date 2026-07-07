@@ -7,9 +7,31 @@ version: 1.0.0
 summary: >
   Owns notification orchestration across email, SMS, push, and webhooks.
 
+ownership:
+  team: platform
+  domain_owner: platform
+  technical_owner: platform
+
+dependency_rules:
+  may_import:
+    - own_domain
+    - own_application
+    - own_public_contracts
+    - kernel_contracts
+  must_not_import:
+    - identity_private_internals
+    - audit_private_internals
+    - framework_runtime_from_domain
+    - database_adapter_from_application
+
 exports:
   contracts:
     - NotificationSender
+    - NotificationStatusReader
+  commands:
+    - notification.send.v1
+  queries:
+    - notification.message_status.v1
   events:
     - notification.message.sent.v1
     - notification.message.failed.v1
@@ -20,14 +42,26 @@ exports:
 requires:
   capabilities:
     - audit.log
+  modules:
+    - audit
   infrastructure:
     - postgres
     - queue
+  contracts:
+    - audit.AuditLogger
 
 interfaces:
   rest:
     enabled: true
     prefix: /api/v1/notification
+  graphql:
+    enabled: false
+  grpc:
+    enabled: false
+  webhooks:
+    enabled: true
+  cli:
+    enabled: false
 
 persistence:
   source_of_truth: postgres
@@ -35,6 +69,8 @@ persistence:
   owns:
     - notification.messages
     - notification.templates
+  reads_from_projections:
+    - identity.user_contact optional
   cross_module_foreign_keys_allowed: false
 
 events:
@@ -53,3 +89,30 @@ security:
   rate_limit: standard
   audit: true
   pii: true
+  object_level_authorization: true
+  secret_access: true
+
+observability:
+  logs: structured
+  metrics: true
+  traces: true
+  audit_events: true
+  required_context:
+    - request_id
+    - correlation_id
+    - actor_id
+    - tenant_id
+    - module
+
+lifecycle:
+  introduced_in: 0.1.0
+  deprecated_in: null
+  replacement: null
+
+testing:
+  unit: true
+  integration: true
+  contract: true
+  architecture: true
+  security: true
+  concurrency: true

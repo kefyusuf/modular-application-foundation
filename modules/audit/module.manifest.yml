@@ -7,10 +7,31 @@ version: 1.0.0
 summary: >
   Owns append-only audit logs and security-relevant event records.
 
+ownership:
+  team: platform
+  domain_owner: security
+  technical_owner: platform
+
+dependency_rules:
+  may_import:
+    - own_domain
+    - own_application
+    - own_public_contracts
+    - kernel_contracts
+  must_not_import:
+    - other_module_private_domain
+    - other_module_private_infrastructure
+    - framework_runtime_from_domain
+    - database_adapter_from_application
+
 exports:
   contracts:
     - AuditLogger
     - AuditReader
+  commands:
+    - audit.record_event.v1
+  queries:
+    - audit.search_logs.v1
   events:
     - audit.security_event.recorded.v1
   permissions:
@@ -19,19 +40,30 @@ exports:
 
 requires:
   capabilities: []
+  modules: []
   infrastructure:
     - postgres
+  contracts: []
 
 interfaces:
   rest:
     enabled: true
     prefix: /api/v1/audit
+  graphql:
+    enabled: false
+  grpc:
+    enabled: false
+  webhooks:
+    enabled: false
+  cli:
+    enabled: false
 
 persistence:
   source_of_truth: postgres
   schema: audit
   owns:
     - audit.audit_logs
+  reads_from_projections: []
   cross_module_foreign_keys_allowed: false
 
 events:
@@ -48,3 +80,30 @@ security:
   rate_limit: strict
   audit: true
   pii: true
+  object_level_authorization: true
+  secret_access: false
+
+observability:
+  logs: structured
+  metrics: true
+  traces: true
+  audit_events: true
+  required_context:
+    - request_id
+    - correlation_id
+    - actor_id
+    - tenant_id
+    - module
+
+lifecycle:
+  introduced_in: 0.1.0
+  deprecated_in: null
+  replacement: null
+
+testing:
+  unit: true
+  integration: true
+  contract: true
+  architecture: true
+  security: true
+  concurrency: false

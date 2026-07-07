@@ -7,11 +7,33 @@ version: 1.0.0
 summary: >
   Owns roles, permissions, scoped assignments, and policy evaluation.
 
+ownership:
+  team: platform
+  domain_owner: security
+  technical_owner: platform
+
+dependency_rules:
+  may_import:
+    - own_domain
+    - own_application
+    - own_public_contracts
+    - kernel_contracts
+  must_not_import:
+    - identity_private_internals
+    - audit_private_internals
+    - framework_runtime_from_domain
+    - database_adapter_from_application
+
 exports:
   contracts:
     - PolicyEvaluator
     - PermissionReader
     - RoleAssignmentManager
+  commands:
+    - access.assign_role.v1
+    - access.revoke_role.v1
+  queries:
+    - access.permissions_for_actor.v1
   events:
     - access.role.assigned.v1
     - access.role.revoked.v1
@@ -26,14 +48,26 @@ exports:
 requires:
   capabilities:
     - audit.log
+  modules:
+    - audit
   infrastructure:
     - postgres
     - redis optional
+  contracts:
+    - audit.AuditLogger
 
 interfaces:
   rest:
     enabled: true
     prefix: /api/v1/access
+  graphql:
+    enabled: false
+  grpc:
+    enabled: false
+  webhooks:
+    enabled: false
+  cli:
+    enabled: false
 
 persistence:
   source_of_truth: postgres
@@ -42,12 +76,15 @@ persistence:
     - access.roles
     - access.permissions
     - access.role_assignments
+  reads_from_projections:
+    - identity.user_summary optional
   cross_module_foreign_keys_allowed: false
 
 events:
   publishes:
     - access.role.assigned.v1
     - access.role.revoked.v1
+    - access.permission.changed.v1
   subscribes:
     - identity.user.registered.v1
   outbox_required: true
@@ -60,3 +97,30 @@ security:
   rate_limit: standard
   audit: true
   pii: false
+  object_level_authorization: true
+  secret_access: false
+
+observability:
+  logs: structured
+  metrics: true
+  traces: true
+  audit_events: true
+  required_context:
+    - request_id
+    - correlation_id
+    - actor_id
+    - tenant_id
+    - module
+
+lifecycle:
+  introduced_in: 0.1.0
+  deprecated_in: null
+  replacement: null
+
+testing:
+  unit: true
+  integration: true
+  contract: true
+  architecture: true
+  security: true
+  concurrency: true
