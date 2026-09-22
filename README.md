@@ -62,6 +62,7 @@ Project documents:
 - [`CHANGELOG.md`](./CHANGELOG.md)
 - [`docs/releases/v0.1.0.md`](./docs/releases/v0.1.0.md)
 - [`docs/releases/v0.2.0.md`](./docs/releases/v0.2.0.md)
+- [`docs/releases/v0.3.0.md`](./docs/releases/v0.3.0.md)
 - [`docs/references.md`](./docs/references.md)
 
 Architecture:
