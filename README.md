@@ -135,6 +135,10 @@ Examples:
 - [`examples/framework-mapping/dotnet.md`](./examples/framework-mapping/dotnet.md)
 - [`examples/framework-mapping/node.md`](./examples/framework-mapping/node.md)
 
+Runnable skeleton:
+
+- [`starters/node-typescript/README.md`](./starters/node-typescript/README.md)
+
 Infrastructure:
 
 - [`infrastructure/README.md`](./infrastructure/README.md)

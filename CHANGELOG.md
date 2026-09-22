@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Runnable Node.js/TypeScript skeleton (`starters/node-typescript`) with one register-user vertical slice, kernel ports, in-memory adapters, HTTP problem details, and unit tests.
+
 ## 0.2.0 - 2026-09-22
 
 ### Added

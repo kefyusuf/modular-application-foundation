@@ -1,0 +1,26 @@
+{
+  "name": "@modular-application-foundation/node-typescript-skeleton",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runnable Node.js/TypeScript vertical slice implementing Modular Application Foundation ports and boundaries.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/app/main.js",
+    "dev": "tsx src/app/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
