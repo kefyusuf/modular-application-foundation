@@ -100,12 +100,18 @@ Kernel contracts:
 - [`kernel/contracts/command-bus.md`](./kernel/contracts/command-bus.md)
 - [`kernel/contracts/query-bus.md`](./kernel/contracts/query-bus.md)
 - [`kernel/contracts/event-bus.md`](./kernel/contracts/event-bus.md)
+- [`kernel/contracts/event-store.md`](./kernel/contracts/event-store.md)
+- [`kernel/contracts/unit-of-work.md`](./kernel/contracts/unit-of-work.md)
+- [`kernel/contracts/specification.md`](./kernel/contracts/specification.md)
 - [`kernel/contracts/policy-evaluator.md`](./kernel/contracts/policy-evaluator.md)
 - [`kernel/contracts/transaction-manager.md`](./kernel/contracts/transaction-manager.md)
 - [`kernel/contracts/idempotency-store.md`](./kernel/contracts/idempotency-store.md)
 - [`kernel/contracts/lock-manager.md`](./kernel/contracts/lock-manager.md)
 - [`kernel/contracts/repository.md`](./kernel/contracts/repository.md)
+- [`kernel/contracts/cache-store.md`](./kernel/contracts/cache-store.md)
+- [`kernel/contracts/queue.md`](./kernel/contracts/queue.md)
 - [`kernel/contracts/file-storage.md`](./kernel/contracts/file-storage.md)
+- [`kernel/contracts/secret-manager.md`](./kernel/contracts/secret-manager.md)
 - [`kernel/contracts/observability.md`](./kernel/contracts/observability.md)
 
 Reference modules:
