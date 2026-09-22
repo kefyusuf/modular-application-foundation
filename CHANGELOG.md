@@ -7,6 +7,8 @@
 - Kernel contracts for event store, unit of work, specification, cache store, queue, and secret manager, completing the FR-004 contract catalog.
 - Node.js/TypeScript adapter blueprint with module layout, kernel ports, composition root, feature slice walkthrough, persistence and queue notes, and boundary enforcement guidance.
 - Laravel adapter blueprint with module layout, kernel ports, service providers, feature slice walkthrough, persistence and queue notes, and boundary enforcement guidance.
+- .NET adapter blueprint with solution layout, kernel ports, composition root, feature slice walkthrough, persistence and worker notes, and boundary enforcement guidance.
+- Go adapter blueprint with package layout, kernel ports, composition root, feature slice walkthrough, persistence and worker notes, and boundary enforcement guidance.
 
 ## 0.1.0 - 2026-07-07
 
