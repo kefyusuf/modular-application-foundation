@@ -7,6 +7,8 @@ One vertical slice that implements the Modular Application Foundation boundaries
 - kernel ports (`CommandBus`, `EventBus`, `Repository`, `TransactionManager`, `PolicyEvaluator`);
 - identity module layers: `public`, `domain`, `application`, `infrastructure`, `interfaces`;
 - feature slice `register-user` with validator, policy, handler, and result DTO;
+- **access** module: role → permission policy evaluator;
+- **audit** and **notification** modules: event subscribers on `identity.user.registered.v1`;
 - in-memory adapters (repository, event bus, transaction manager);
 - HTTP adapter using `node:http` (no web framework lock-in);
 - RFC 9457-style problem details for errors;
@@ -27,8 +29,11 @@ Then:
 curl -s -X POST http://localhost:3000/api/v1/identity/users \
   -H 'content-type: application/json' \
   -H 'x-actor-id: demo' \
+  -H 'x-actor-roles: admin' \
   -d '{"email":"user@example.com","passwordHash":"password-hash"}'
 ```
+
+Use role `user` to see 403 from the access policy evaluator.
 
 ## Layout
 
@@ -36,11 +41,15 @@ curl -s -X POST http://localhost:3000/api/v1/identity/users \
 src/
   kernel/ports.ts
   kernel/container.ts
+  kernel/event-router.ts
   modules/identity/
     public/
     domain/
     application/features/register-user/
     infrastructure/persistence/
+  modules/access/
+  modules/audit/
+  modules/notification/
   app/
     main.ts
     http.ts
