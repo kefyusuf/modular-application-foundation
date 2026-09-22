@@ -1,11 +1,14 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { randomUUID } from 'node:crypto';
-import type { CommandBus, PolicyEvaluator } from '../kernel/ports.js';
-import { actorFromRequest } from './actor.js';
+import type { CommandBus } from '../kernel/ports.js';
 import { writeProblem } from './problem.js';
+import { LoginCommand } from '../modules/identity/application/features/login/command.js';
+import { loginInput } from '../modules/identity/application/features/login/validator.js';
 import { RegisterUserCommand } from '../modules/identity/application/features/register-user/command.js';
 import { ensureCanCreateUser } from '../modules/identity/application/features/register-user/policy.js';
 import { registerUserInput } from '../modules/identity/application/features/register-user/validator.js';
+import { actorFromRequest } from './actor.js';
+import type { PolicyEvaluator } from '../kernel/ports.js';
+import { randomUUID } from 'node:crypto';
 
 export function createHttpHandler(deps: {
   commandBus: CommandBus;
@@ -40,6 +43,36 @@ export function createHttpHandler(deps: {
         const message = error instanceof Error ? error.message : 'Unexpected error';
         if (message === 'Forbidden') {
           writeProblem(res, 403, 'Forbidden');
+          return;
+        }
+        writeProblem(res, 400, 'Request failed', message);
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/api/v1/identity/login') {
+      try {
+        const body = await readJson(req);
+        const parsed = loginInput.safeParse(body);
+        if (!parsed.success) {
+          writeProblem(res, 400, 'Invalid request', parsed.error.message);
+          return;
+        }
+
+        const result = await deps.commandBus.dispatch(
+          new LoginCommand(parsed.data.email, parsed.data.passwordHash),
+        );
+
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unexpected error';
+        if (message === 'Invalid credentials') {
+          writeProblem(res, 401, 'Unauthorized', message);
+          return;
+        }
+        if (message === 'Too many attempts') {
+          writeProblem(res, 429, 'Too many requests', message);
           return;
         }
         writeProblem(res, 400, 'Request failed', message);

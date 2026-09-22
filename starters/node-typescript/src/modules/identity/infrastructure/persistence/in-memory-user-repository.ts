@@ -12,6 +12,15 @@ export class InMemoryUserRepository implements UserRepository {
     return row.user;
   }
 
+  async findByEmail(email: string): Promise<User | null> {
+    for (const row of this.users.values()) {
+      if (row.user.email.value === email.trim().toLowerCase()) {
+        return row.user;
+      }
+    }
+    return null;
+  }
+
   async save(aggregate: User, expectedVersion: number): Promise<void> {
     const row = this.users.get(aggregate.id);
     const current = row?.version ?? 0;

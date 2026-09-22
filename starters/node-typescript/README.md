@@ -9,6 +9,8 @@ One vertical slice that implements the Modular Application Foundation boundaries
 - feature slice `register-user` with validator, policy, handler, and result DTO;
 - **access** module: role → permission policy evaluator;
 - **audit** and **notification** modules: event subscribers on `identity.user.registered.v1`;
+- **settings** module: typed `SettingReader`/`SettingWriter` used by login lockout;
+- **login** use case with success/failure events and max-attempt lockout;
 - in-memory adapters (repository, event bus, transaction manager);
 - HTTP adapter using `node:http` (no web framework lock-in);
 - RFC 9457-style problem details for errors;
@@ -35,6 +37,14 @@ curl -s -X POST http://localhost:3000/api/v1/identity/users \
 
 Use role `user` to see 403 from the access policy evaluator.
 
+Login after register:
+
+```bash
+curl -s -X POST http://localhost:3000/api/v1/identity/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"user@example.com","passwordHash":"password-hash"}'
+```
+
 ## Layout
 
 ```txt
@@ -50,6 +60,7 @@ src/
   modules/access/
   modules/audit/
   modules/notification/
+  modules/settings/
   app/
     main.ts
     http.ts

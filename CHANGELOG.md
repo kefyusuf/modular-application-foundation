@@ -6,6 +6,7 @@
 
 - Runnable Node.js/TypeScript skeleton (`starters/node-typescript`) with one register-user vertical slice, kernel ports, in-memory adapters, HTTP problem details, and unit tests.
 - Skeleton modules for access (policy), audit, and notification (event subscribers on user registration).
+- Skeleton settings module and identity login use case with lockout via `security.max_login_attempts`.
 
 ## 0.2.0 - 2026-09-22
 
