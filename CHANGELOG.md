@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Kernel contracts for event store, unit of work, specification, cache store, queue, and secret manager, completing the FR-004 contract catalog.
+
 ## 0.1.0 - 2026-07-07
 
 ### Added
