@@ -15,6 +15,7 @@ A runnable educational example with five modules, user registration, login, and 
 - refresh token rotation, session revocation, and configurable JWT signing/verification keys;
 - in-memory adapters (repository, event bus, transaction manager);
 - optional PostgreSQL user/session adapters and a transactional outbox with leased delivery and retry;
+- durable audit entries and notification intents with consumer deduplication across restarts;
 - real HTTP integration tests and executable module/layer boundary checks;
 - HTTP adapter using `node:http` (no web framework lock-in);
 - RFC 9457-style problem details for errors;
@@ -125,7 +126,7 @@ The HTTP suite starts the real application on an ephemeral loopback port for eac
 
 Authentication adapter tests cover salted password hashes, invalid passwords, unsigned/altered/foreign/expired tokens, algorithm allowlisting, issuer/audience/type validation, required claims, and not-before checks. Session tests cover rotation, replay, competing refreshes, logout, absolute expiry, key rotation, and loss of session state. HTTP refresh/logout responses are checked against the OpenAPI contract. Application tests cover denied current-user access and revocation when an identity is missing.
 
-Persistence tests run PostgreSQL SQL against a temporary, filesystem-backed [PGlite database](https://pglite.dev/docs/). They cover transaction rollback, normalized-email uniqueness, optimistic versions, reopening persistent users/sessions/replay history, outbox retry and lease recovery, stable delivery IDs, and the HTTP flow with SQL adapters. PGlite uses one connection; these tests do not verify the `pg` network transport or competing workers on an external PostgreSQL server.
+Persistence tests run PostgreSQL SQL against a temporary, filesystem-backed [PGlite database](https://pglite.dev/docs/). They cover transaction rollback, normalized-email uniqueness, optimistic versions, reopening persistent users/sessions/replay history, outbox retry and lease recovery, stable delivery IDs, and the HTTP flow with SQL adapters. Consumer tests reopen the database after partial delivery and after effects complete before acknowledgement, verify deduplication survives restart, and verify failed effects leave no delivery receipt. PGlite uses one connection; these tests do not verify the `pg` network transport or competing workers on an external PostgreSQL server.
 
 The architecture suite uses the TypeScript parser and module resolver to inspect production source dependencies. It rejects private cross-module access, application-to-infrastructure shortcuts, domain dependencies outside its own domain and kernel ports, private dependencies in public contracts, kernel dependencies on application/modules, and HTTP/interface access to domain, infrastructure, or repository ports. The composition root may wire concrete adapters. Test files are excluded from the production graph because integration tests intentionally assemble modules and inspect adapters.
 
@@ -206,26 +207,28 @@ npm run migrate
 npm run dev
 ```
 
-`npm run migrate` creates the identity-owned users, sessions, refresh-token history, and outbox tables in one transaction. It is an idempotent initial schema initializer, not a versioned migration system. Startup checks the user table is available; it does not run migrations automatically. Each module's adapter reads only its own tables.
+`npm run migrate` creates the identity-owned users, sessions, refresh-token history, and outbox tables, audit-owned entries, and notification-owned queued messages in one transaction. Run it again when upgrading from the earlier identity-only schema; existing records are retained. It is an idempotent initial schema initializer, not a versioned migration system. Startup checks all six required tables are available; it does not run migrations automatically. Each module's adapter reads only its own tables.
 
 The SQL transaction manager keeps all queries in a transaction on the same connection. Registration saves the user and outbox event together; logout and replay revocation save the state change and event together. An outbox write failure rolls back those changes. Failed-login events commit even though the caller receives an authentication error.
 
 The CLI polls the outbox every second and closes the server, pending poll, and database on shutdown. Embedded callers can use `createApplication({ tokenKeys, database })`, invoke `application.outbox.drain()`, and close the application when finished. Delivery claims have a 30-second lease; failures retry after an increasing delay capped at 60 seconds. Expired claims can be reclaimed. Delivery is at least once: a crash after subscriber effects and before acknowledgement can cause duplicates.
 
-Audit and notification effects and deduplication sets remain in memory. Stable event IDs suppress duplicates within one process. Durable consumer effects and deduplication across restarts are the next adapter group. No external email provider is connected.
+Audit and notification each persist a unique event ID with their effect in a single row, using PostgreSQL [ON CONFLICT](https://www.postgresql.org/docs/current/sql-insert.html) to skip repeated delivery. This row acts as a durable consumer receipt: restarting between an effect and the outbox acknowledgement does not repeat the audit entry or queued notification. Consumers commit independently; retry resumes incomplete work if one succeeds and another fails. Calls without an idempotency key are independent operations and are not deduplicated.
+
+`PostgresAuditLogger` stores audit entries; `PostgresNotificationQueue` stores notification intents with `pending` status. Queue acceptance completes local outbox delivery, but does not mean an email was sent. No external provider or notification delivery worker is implemented; that worker will need its own retry and provider idempotency strategy. Both adapters expose `list()` for local inspection; there is no inspection HTTP API. In-memory adapters expose the same helper. Settings and login counters remain in memory. There is no lease heartbeat, dead-letter handling, expiry cleanup, or strict delivery-order guarantee.
 
 ## Event flow
 
-Registration publishes `identity.user.registered.v1`; the subscribers record an audit entry and collect a welcome email intent. These effects remain in memory and run asynchronously during outbox delivery in PostgreSQL mode. No email is delivered externally. Login publishes `identity.user.login_succeeded.v1` or `identity.user.login_failed.v1`; those login events are not yet audited by the current subscribers. Session revocation publishes `identity.session.revoked.v1` with a logout/replay/missing-identity reason, which audit records. Notification handles only registration events.
+Registration publishes `identity.user.registered.v1`; the subscribers record an audit entry and collect a welcome email intent. The default mode stores these in memory; PostgreSQL mode persists them asynchronously during outbox delivery. No email is delivered externally. Login publishes `identity.user.login_succeeded.v1` or `identity.user.login_failed.v1`; those login events are not yet audited by the current subscribers. Session revocation publishes `identity.session.revoked.v1` with a logout/replay/missing-identity reason, which audit records. Notification handles only registration events.
 
 ## Intentional limits
 
-- Default persistence is in memory. PostgreSQL mode retains users, sessions/replay history, outbox events; settings, audit entries, notifications, and login counters remain in memory.
+- Default persistence is in memory. PostgreSQL mode retains users, sessions/replay history, outbox events, audit entries, and queued notification intents; settings and login counters remain in memory.
 - Registration uses the access module's role-to-permission evaluator. The demo actor headers are not a production authentication mechanism.
 - Standard credentials are hashed with scrypt and standard access tokens are signed/verified. The legacy route still uses illustrative strings and demo tokens.
 - JWT keys support external configuration and rotation; a secret-manager adapter remains future work.
 - The default `createImmediateTransactionManager` has no commit/rollback semantics. PostgreSQL mode provides rollback for producer changes, while subscriber effects remain outside that transaction.
-- Outbox delivery uses in-process subscribers. No external broker, durable consumer deduplication, or email delivery provider is implemented.
+- Outbox delivery uses in-process subscribers with durable local effect deduplication in PostgreSQL mode. No external broker or email delivery provider is implemented; external effects are not covered by this deduplication.
 - PostgreSQL enforces normalized-email uniqueness and optimistic user versions. No settings HTTP API or timed login unlock is implemented.
 - Tests cover registration, policy, subscribers, concurrency, login, settings, HTTP integration, authentication adapters, exercised OpenAPI responses, and module/layer imports. Full event contract conformance and manifest validation remain future work.
 

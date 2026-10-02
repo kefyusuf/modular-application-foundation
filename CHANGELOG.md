@@ -4,6 +4,8 @@
 
 ### Added
 
+- PostgreSQL audit entries and pending notification intents with module-owned schemas and atomic durable delivery receipts.
+- Consumer recovery tests covering restart after completed/partial effects, failed writes without receipts, independent delivery IDs, and repeatable schema initialization.
 - Optional PostgreSQL user/session persistence, normalized-email uniqueness, optimistic versions, and explicit identity schema initialization.
 - Transactional identity outbox with integration envelopes, leased delivery, retries, and stable IDs for in-process consumer deduplication.
 - Filesystem-backed PostgreSQL persistence tests covering restart recovery, producer rollback, replay revocation, delivery recovery, and HTTP behavior.
@@ -17,6 +19,7 @@
 
 ### Changed
 
+- Persistent application startup now rejects incomplete identity or consumer schemas before accepting requests.
 - Registration accepts a standard `password` alongside the separate legacy `passwordHash` mode; legacy login remains compatible for demo accounts and cannot authenticate standard password hashes.
 - Documented standard login validation/lockout errors and password length limit in the foundation OpenAPI example.
 - Extracted `createApplication()` so the entry point and integration tests use the same module composition with isolated in-memory state.
