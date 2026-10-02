@@ -30,9 +30,15 @@ import { RefreshSessionCommand } from '../modules/identity/application/features/
 import { RefreshSessionHandler } from '../modules/identity/application/features/refresh-session/handler.js';
 import { LogoutCommand } from '../modules/identity/application/features/logout/command.js';
 import { LogoutHandler } from '../modules/identity/application/features/logout/handler.js';
+import type { SqlDatabase } from '../kernel/sql.js';
+import { PostgresUserRepository } from '../modules/identity/infrastructure/persistence/postgres-user-repository.js';
+import { PostgresSessionStore } from '../modules/identity/infrastructure/auth/postgres-session-store.js';
+import { PostgresOutboxEventBus, PostgresOutboxDispatcher } from '../modules/identity/infrastructure/persistence/postgres-outbox.js';
 
-export async function createApplication(options: { tokenKeys?: SigningKeyRing } = {}) {
-  const users = new InMemoryUserRepository();
+export async function createApplication(options: { tokenKeys?: SigningKeyRing; database?: SqlDatabase } = {}) {
+  if (options.database && !options.tokenKeys) throw new Error('Persistent storage requires configured JWT keys');
+  if (options.database) await options.database.query('SELECT id FROM identity.users LIMIT 0');
+  const users = options.database ? new PostgresUserRepository(options.database) : new InMemoryUserRepository();
   const eventLog: string[] = [];
   const audit = new InMemoryAuditLogger();
   const notifications = new InMemoryNotificationSender();
@@ -43,8 +49,9 @@ export async function createApplication(options: { tokenKeys?: SigningKeyRing } 
     createAuditSubscriber(audit),
     createWelcomeEmailSubscriber(notifications),
   ]);
-  const eventBus = delivery;
-  const transactionManager = createImmediateTransactionManager();
+  const eventBus = options.database ? new PostgresOutboxEventBus(options.database) : delivery;
+  const outbox = options.database ? new PostgresOutboxDispatcher(options.database, delivery) : undefined;
+  const transactionManager = options.database ?? createImmediateTransactionManager();
   const policyEvaluator = new InMemoryPolicyEvaluator([
     { role: 'admin', permissions: [Permissions.UserCreate, Permissions.UserRead, Permissions.Login] },
     { role: 'user', permissions: [Permissions.UserRead, Permissions.Login] },
@@ -52,7 +59,7 @@ export async function createApplication(options: { tokenKeys?: SigningKeyRing } 
   ]);
 
   const passwords = new ScryptPasswordHasher();
-  const sessions = new InMemorySessionStore();
+  const sessions = options.database ? new PostgresSessionStore(options.database) : new InMemorySessionStore();
   const tokens = new JwtTokenService(undefined, options.tokenKeys, sessions);
   const registerUserHandler = new RegisterUserHandler(users, eventBus, transactionManager, passwords);
   const loginHandler = new LoginHandler(users, eventBus, transactionManager, settings, passwords);
@@ -67,5 +74,5 @@ export async function createApplication(options: { tokenKeys?: SigningKeyRing } 
   const commandBus = createInMemoryCommandBus(handlers);
 
   const handler = createHttpHandler({ commandBus, policyEvaluator });
-  return { handler, users, eventLog, audit, notifications, settings, close: async () => {} };
+  return { handler, users, eventLog, audit, notifications, settings, outbox, close: async () => { await options.database?.close(); } };
 }

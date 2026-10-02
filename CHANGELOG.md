@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Optional PostgreSQL user/session persistence, normalized-email uniqueness, optimistic versions, and explicit identity schema initialization.
+- Transactional identity outbox with integration envelopes, leased delivery, retries, and stable IDs for in-process consumer deduplication.
+- Filesystem-backed PostgreSQL persistence tests covering restart recovery, producer rollback, replay revocation, delivery recovery, and HTTP behavior.
+- Refresh/logout API operations, atomic in-memory refresh rotation, replay detection, and immediate session-wide token revocation.
+- Configurable JWT key rings with active signing keys, retained verification keys, and production startup validation.
+- Session lifecycle, concurrency, expiry, key-rotation, and configuration tests; audit records for logout/replay/missing-identity revocations.
+- Standard `/api/v1/identity/auth/login` and bearer-protected `/api/v1/identity/me` operations with OpenAPI response envelopes and request/correlation metadata.
+- Identity password/token ports with scrypt and jose JWT adapters, plus authentication and response-schema contract tests.
+- HTTP integration tests using the real application wiring, covering registration, authorization, validation, login, lockout, health, and missing routes.
+- TypeScript architecture checks for module privacy and layer direction, with allowed/forbidden dependency fixtures.
+
+### Changed
+
+- Registration accepts a standard `password` alongside the separate legacy `passwordHash` mode; legacy login remains compatible for demo accounts and cannot authenticate standard password hashes.
+- Documented standard login validation/lockout errors and password length limit in the foundation OpenAPI example.
+- Extracted `createApplication()` so the entry point and integration tests use the same module composition with isolated in-memory state.
+- Extended the skeleton typecheck to include test sources while keeping production builds free of tests.
+- Updated the Node.js/TypeScript skeleton guide to reflect all five modules, identity/session feature slices, actual HTTP behavior, event subscribers, and current limitations.
+- Documented differences between the runnable skeleton and the foundation API/event contracts, including demo authentication, login lockout, and transaction behavior.
+
 ## 0.3.0 - 2026-09-22
 
 ### Added
