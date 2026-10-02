@@ -1,6 +1,5 @@
-import type { SqlDatabase } from '../../../../kernel/sql.js';
+import type { SqlMigration } from '../../../../kernel/sql.js';
 
-// Initial, additive schema. Later revisions require separately versioned migrations.
 const statements = [
   'CREATE SCHEMA IF NOT EXISTS identity',
   `CREATE TABLE IF NOT EXISTS identity.users (
@@ -23,8 +22,6 @@ const statements = [
   'CREATE INDEX IF NOT EXISTS outbox_pending_idx ON identity.outbox (available_at, occurred_at) WHERE delivered_at IS NULL',
 ];
 
-export async function migrateIdentity(database: SqlDatabase): Promise<void> {
-  await database.withinTransaction(async () => {
-    for (const statement of statements) await database.query(statement);
-  });
-}
+export const identityMigrations: readonly SqlMigration[] = [
+  { version: 1, name: 'initial_schema', statements },
+];

@@ -7,11 +7,12 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { PGlite, type Transaction } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { SqlDatabase, SqlResult } from '../kernel/sql.js';
+import type { SqlDatabase, SqlMigration, SqlResult } from '../kernel/sql.js';
 import type { DomainEvent } from '../kernel/ports.js';
-import { migrateIdentity } from '../modules/identity/infrastructure/persistence/schema.js';
-import { migrateAudit } from '../modules/audit/infrastructure/schema.js';
-import { migrateNotification } from '../modules/notification/infrastructure/schema.js';
+import { runMigrations } from './migrations.js';
+import { identityMigrations } from '../modules/identity/infrastructure/persistence/schema.js';
+import { auditMigrations } from '../modules/audit/infrastructure/schema.js';
+import { notificationMigrations } from '../modules/notification/infrastructure/schema.js';
 import { PostgresAuditLogger } from '../modules/audit/infrastructure/postgres-audit-logger.js';
 import { PostgresNotificationQueue } from '../modules/notification/infrastructure/postgres-notification-queue.js';
 import { PostgresUserRepository } from '../modules/identity/infrastructure/persistence/postgres-user-repository.js';
@@ -33,6 +34,17 @@ import { InMemoryNotificationSender } from '../modules/notification/infrastructu
 import { createAuditSubscriber } from '../modules/audit/application/on-user-registered.js';
 import { createWelcomeEmailSubscriber } from '../modules/notification/application/on-user-registered.js';
 import { createSubscribingEventBus } from '../kernel/event-router.js';
+
+const migrateIdentity = (database: SqlDatabase) => runMigrations(database, 'identity', identityMigrations);
+const migrateAudit = (database: SqlDatabase) => runMigrations(database, 'audit', auditMigrations);
+const migrateNotification = (database: SqlDatabase) => runMigrations(database, 'notification', notificationMigrations);
+
+const initialFixture: SqlMigration = {
+  version: 1, name: 'create_counter', statements: [
+    'CREATE TABLE migration_fixture.counter (value integer NOT NULL)',
+    'INSERT INTO migration_fixture.counter VALUES (1)',
+  ],
+};
 
 // Exercise the production SQL repositories/schema against PostgreSQL compiled to WASM.
 // PGlite has one connection; this suite does not simulate independent PostgreSQL backends.
@@ -69,6 +81,7 @@ describe('PostgreSQL persistence and outbox', () => {
   }, 30000);
 
   beforeEach(async () => {
+    await database.query('DROP SCHEMA IF EXISTS migration_fixture CASCADE');
     await database.query('TRUNCATE identity.refresh_tokens, identity.sessions, identity.outbox, identity.users, audit.entries, notification.messages');
     users = new PostgresUserRepository(database);
     events = new PostgresOutboxEventBus(database);
@@ -86,6 +99,102 @@ describe('PostgreSQL persistence and outbox', () => {
   async function register(email = 'user@example.com', id = 'user-1') {
     return new RegisterUserHandler(users, events, database).execute(new RegisterUserCommand(email, 'demo-credential', id));
   }
+
+  it.each(['identity', 'audit', 'notification'])('records the initial %s schema migration', async (module) => {
+    const { rows } = await database.query<{ name: string | null }>('SELECT to_regclass($1)::text AS name', [`${module}.schema_migrations`]);
+    expect(rows[0].name).toBe(`${module}.schema_migrations`);
+    const history = await database.query(`SELECT version, name FROM ${module}.schema_migrations`);
+    expect(history.rows).toEqual([{ version: 1, name: 'initial_schema' }]);
+  });
+
+  it('applies only new migrations and retains their history across a database reopen', async () => {
+    await runMigrations(database, 'migration_fixture', [initialFixture]);
+    const upgrade = { version: 2, name: 'increment_counter', statements: ['UPDATE migration_fixture.counter SET value = value + 1'] };
+    await runMigrations(database, 'migration_fixture', [initialFixture, upgrade]);
+    await database.close();
+    database = new EmbeddedPostgres(directory);
+    await runMigrations(database, 'migration_fixture', [initialFixture, upgrade]);
+    expect((await database.query('SELECT value FROM migration_fixture.counter')).rows).toEqual([{ value: 2 }]);
+    expect((await database.query('SELECT version, name FROM migration_fixture.schema_migrations ORDER BY version')).rows).toEqual([
+      { version: 1, name: 'create_counter' }, { version: 2, name: 'increment_counter' },
+    ]);
+  }, 30000);
+
+  it.each(['name', 'statements'] as const)('rejects edits to an applied migration %s before running pending SQL', async (field) => {
+    await runMigrations(database, 'migration_fixture', [initialFixture]);
+    const changed = field === 'name' ? { ...initialFixture, name: 'renamed' } : { ...initialFixture, statements: ['DELETE FROM migration_fixture.counter'] };
+    const pending = { version: 2, name: 'delete_counter', statements: ['DELETE FROM migration_fixture.counter'] };
+    await expect(runMigrations(database, 'migration_fixture', [changed, pending])).rejects.toThrow('Applied migration changed');
+    expect((await database.query('SELECT value FROM migration_fixture.counter')).rows).toEqual([{ value: 1 }]);
+    expect((await database.query('SELECT version FROM migration_fixture.schema_migrations')).rows).toEqual([{ version: 1 }]);
+  });
+
+  it('rejects a removed applied migration instead of accepting an older catalog', async () => {
+    await runMigrations(database, 'migration_fixture', [initialFixture]);
+    await expect(runMigrations(database, 'migration_fixture', [])).rejects.toThrow('Migration history does not match catalog');
+  });
+
+  it('rejects insertion of an older migration before an already applied higher version', async () => {
+    const third = { version: 3, name: 'increment_counter', statements: ['UPDATE migration_fixture.counter SET value = value + 1'] };
+    await runMigrations(database, 'migration_fixture', [initialFixture, third]);
+    const late = { version: 2, name: 'late_insert', statements: ['DELETE FROM migration_fixture.counter'] };
+    await expect(runMigrations(database, 'migration_fixture', [initialFixture, late, third])).rejects.toThrow('Migration history does not match catalog');
+    expect((await database.query('SELECT value FROM migration_fixture.counter')).rows).toEqual([{ value: 2 }]);
+  });
+
+  it.each([
+    ['duplicate versions', [initialFixture, initialFixture]],
+    ['descending versions', [{ ...initialFixture, version: 2 }, initialFixture]],
+    ['zero version', [{ ...initialFixture, version: 0 }]],
+    ['fractional version', [{ ...initialFixture, version: 1.5 }]],
+    ['empty name', [{ ...initialFixture, name: '' }]],
+  ] as const)('rejects %s before writing schema or executing SQL', async (_name, catalog) => {
+    await expect(runMigrations(database, 'migration_fixture', catalog)).rejects.toThrow('Invalid migration catalog');
+    expect((await database.query('SELECT to_regnamespace($1)::text AS name', ['migration_fixture'])).rows).toEqual([{ name: null }]);
+  });
+
+  it('rejects unsafe schema identifiers before issuing SQL', async () => {
+    await expect(runMigrations(database, 'invalid-schema', [initialFixture])).rejects.toThrow('Invalid migration schema');
+  });
+
+  it.each(['statement', 'history'] as const)('rolls back pending changes when a migration %s write fails', async (failure) => {
+    await runMigrations(database, 'migration_fixture', [initialFixture]);
+    if (failure === 'history') await database.query(`ALTER TABLE migration_fixture.schema_migrations ADD CONSTRAINT reject_receipt CHECK (name <> 'upgrade')`);
+    const statements = ['ALTER TABLE migration_fixture.counter ADD COLUMN upgraded boolean NOT NULL DEFAULT true'];
+    if (failure === 'statement') statements.push('INSERT INTO migration_fixture.missing_table VALUES (1)');
+    await expect(runMigrations(database, 'migration_fixture', [initialFixture, { version: 2, name: 'upgrade', statements }])).rejects.toThrow();
+    expect((await database.query(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'migration_fixture' AND table_name = 'counter' ORDER BY ordinal_position`)).rows).toEqual([{ column_name: 'value' }]);
+    expect((await database.query('SELECT version FROM migration_fixture.schema_migrations')).rows).toEqual([{ version: 1 }]);
+  });
+
+  it('rolls back the entire pending batch when a later migration fails', async () => {
+    await runMigrations(database, 'migration_fixture', [initialFixture]);
+    const second = { version: 2, name: 'increment_counter', statements: ['UPDATE migration_fixture.counter SET value = value + 1'] };
+    const third = { version: 3, name: 'broken_upgrade', statements: ['INSERT INTO migration_fixture.missing_table VALUES (1)'] };
+    await expect(runMigrations(database, 'migration_fixture', [initialFixture, second, third])).rejects.toThrow();
+    expect((await database.query('SELECT value FROM migration_fixture.counter')).rows).toEqual([{ value: 1 }]);
+    expect((await database.query('SELECT version FROM migration_fixture.schema_migrations')).rows).toEqual([{ version: 1 }]);
+  });
+
+  it('adopts the earlier unversioned schemas without discarding users, sessions, or consumer effects', async () => {
+    await register();
+    const keys = { activeKeyId: 'stable', keys: { stable: randomBytes(32) } };
+    const tokens = new JwtTokenService(undefined, keys, new PostgresSessionStore(database));
+    const login = await tokens.issue('user-1');
+    const app = await createApplication({ database, tokenKeys: keys });
+    await app.outbox!.drain();
+    await database.query('DROP TABLE identity.schema_migrations, audit.schema_migrations, notification.schema_migrations');
+    await database.withinTransaction(async () => {
+      await migrateIdentity(database);
+      await migrateAudit(database);
+      await migrateNotification(database);
+    });
+    expect((await users.get('user-1')).email.value).toBe('user@example.com');
+    await expect(tokens.verify(login.access_token)).resolves.toMatchObject({ id: 'user-1' });
+    expect(await app.audit.list()).toHaveLength(1);
+    expect(await app.notifications.list()).toHaveLength(1);
+    expect((await database.query('SELECT version FROM identity.schema_migrations')).rows).toEqual([{ version: 1 }]);
+  });
 
   it.each(['sessions', 'refresh_tokens', 'outbox'] as const)('rejects startup when the identity %s table is missing', async (table) => {
     await database.query(`ALTER TABLE identity.${table} RENAME TO unavailable_${table}`);

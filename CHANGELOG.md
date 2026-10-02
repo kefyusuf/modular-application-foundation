@@ -4,6 +4,8 @@
 
 ### Added
 
+- Versioned per-module SQL migration catalogs and history with source checksums, append-only applied versions, and transactional pending batches.
+- Migration tests for persistent one-time execution, incompatible catalog rejection, rollback, and data-preserving adoption of earlier unversioned schemas.
 - PostgreSQL audit entries and pending notification intents with module-owned schemas and atomic durable delivery receipts.
 - Consumer recovery tests covering restart after completed/partial effects, failed writes without receipts, independent delivery IDs, and repeatable schema initialization.
 - Optional PostgreSQL user/session persistence, normalized-email uniqueness, optimistic versions, and explicit identity schema initialization.
