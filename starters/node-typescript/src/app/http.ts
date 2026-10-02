@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { AuthenticateCommand } from '../modules/identity/application/features/authenticate/command.js';
 import { authenticateInput } from '../modules/identity/application/features/authenticate/validator.js';
 import { CurrentUserCommand } from '../modules/identity/application/features/current-user/command.js';
-import { requestContext } from './request-context.js';
+import { requestContext, type RequestMetadata, type RequestContextStore } from './request-context.js';
 import { RefreshSessionCommand } from '../modules/identity/application/features/refresh-session/command.js';
 import { refreshSessionInput } from '../modules/identity/application/features/refresh-session/validator.js';
 import { LogoutCommand } from '../modules/identity/application/features/logout/command.js';
@@ -20,9 +20,9 @@ import { LogoutCommand } from '../modules/identity/application/features/logout/c
 export function createHttpHandler(deps: {
   commandBus: CommandBus;
   policyEvaluator: PolicyEvaluator;
+  contexts?: RequestContextStore;
 }) {
-  return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    const meta = requestContext(req, res);
+  const handle = async (req: IncomingMessage, res: ServerResponse, meta: RequestMetadata): Promise<void> => {
     const problem = (status: number, title: string, detail?: string) => {
       if (status === 401) res.setHeader('www-authenticate', 'Bearer');
       writeProblem(res, status, title, detail, { ...meta, instance: req.url });
@@ -156,6 +156,11 @@ export function createHttpHandler(deps: {
     }
 
     problem(404, 'Not found');
+  };
+  return (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    const meta = requestContext(req, res);
+    const action = () => handle(req, res, meta);
+    return deps.contexts ? deps.contexts.run({ requestId: meta.request_id, correlationId: meta.correlation_id }, action) : action();
   };
 }
 

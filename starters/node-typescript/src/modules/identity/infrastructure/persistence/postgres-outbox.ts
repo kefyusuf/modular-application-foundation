@@ -12,7 +12,9 @@ export class PostgresOutboxEventBus implements EventBus {
     const envelope = {
       specversion: '1.0', id, source: 'mod://identity', type: event.type,
       subject: event.data.sessionId ? `session/${event.data.sessionId}` : `user/${event.data.userId ?? 'unknown'}`,
-      time: event.occurredAt, datacontenttype: 'application/json', correlationid: id, data,
+      time: event.occurredAt, datacontenttype: 'application/json',
+      correlationid: event.context?.correlationId ?? id,
+      ...(event.context ? { causationid: event.context.requestId } : {}), data,
     };
     await this.database.query('INSERT INTO identity.outbox (id, event, envelope, occurred_at) VALUES ($1, $2::jsonb, $3::jsonb, $4)', [id, JSON.stringify(event), JSON.stringify(envelope), event.occurredAt]);
   }

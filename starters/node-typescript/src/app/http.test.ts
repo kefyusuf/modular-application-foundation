@@ -82,6 +82,49 @@ describe('HTTP adapter with real module wiring', () => {
     });
   }
 
+  it('carries HTTP request context into the registration audit entry', async () => {
+    const response = await fetch(`${baseUrl}/api/v1/identity/users`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-actor-roles': 'admin', 'x-request-id': 'request-register', 'x-correlation-id': 'workflow-register' },
+      body: JSON.stringify({ email: 'context@example.com', password: 'a-long-password' }),
+    });
+    expect(response.status).toBe(201);
+    await response.json();
+    const entries = await app.audit.list();
+    expect(entries[0]).toMatchObject({ context: { requestId: 'request-register', correlationId: 'workflow-register' } });
+  });
+
+  it('keeps event context isolated for overlapping HTTP requests', async () => {
+    const emails = ['first-context@example.com', 'second-context@example.com'];
+    const responses = await Promise.all(emails.map((email, index) => fetch(`${baseUrl}/api/v1/identity/users`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-actor-roles': 'admin', 'x-request-id': `request-${index}`, 'x-correlation-id': `workflow-${index}` },
+      body: JSON.stringify({ email, password: 'a-long-password' }),
+    })));
+    for (const response of responses) { expect(response.status).toBe(201); await response.json(); }
+    const entries = await app.audit.list();
+    emails.forEach((email, index) => expect(entries.find((entry) => entry.data.email === email)).toMatchObject({ context: { requestId: `request-${index}`, correlationId: `workflow-${index}` } }));
+  });
+
+  it('uses normalized generated IDs without inheriting a prior request context', async () => {
+    for (const [email, requestId, correlationId] of [
+      ['prior-context@example.com', 'prior-request', 'prior-workflow'],
+      ['generated-context@example.com', 'invalid id', undefined],
+    ]) {
+      const response = await fetch(`${baseUrl}/api/v1/identity/users`, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-actor-roles': 'admin', 'x-request-id': requestId!, ...(correlationId ? { 'x-correlation-id': correlationId } : {}) },
+        body: JSON.stringify({ email, password: 'a-long-password' }),
+      });
+      expect(response.status).toBe(201);
+      await response.json();
+      if (email === 'generated-context@example.com') {
+        const normalizedId = response.headers.get('x-request-id');
+        expect(normalizedId).toMatch(/^[0-9a-f-]{36}$/);
+        expect(response.headers.get('x-correlation-id')).toBe(normalizedId);
+        const entry = (await app.audit.list()).find((entry) => entry.data.email === email);
+        expect(entry).toMatchObject({ context: { requestId: normalizedId, correlationId: normalizedId } });
+      }
+    }
+  });
+
   async function expectProblem(response: Response, status: number) {
     expect(response.status).toBe(status);
     expect(response.headers.get('content-type')).toBe('application/problem+json');

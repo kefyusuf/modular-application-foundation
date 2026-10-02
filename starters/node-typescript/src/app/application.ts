@@ -4,7 +4,8 @@ import {
   createImmediateTransactionManager,
 } from '../kernel/container.js';
 import { createSubscribingEventBus } from '../kernel/event-router.js';
-import type { CommandHandler } from '../kernel/ports.js';
+import type { CommandHandler, EventBus } from '../kernel/ports.js';
+import { RequestContextStore } from './request-context.js';
 import { RegisterUserHandler } from '../modules/identity/application/features/register-user/handler.js';
 import { RegisterUserCommand } from '../modules/identity/application/features/register-user/command.js';
 import { LoginHandler } from '../modules/identity/application/features/login/handler.js';
@@ -56,7 +57,14 @@ export async function createApplication(options: { tokenKeys?: SigningKeyRing; d
     createAuditSubscriber(audit),
     createWelcomeEmailSubscriber(notifications),
   ]);
-  const eventBus = options.database ? new PostgresOutboxEventBus(options.database) : delivery;
+  const contexts = new RequestContextStore();
+  const producer = options.database ? new PostgresOutboxEventBus(options.database) : delivery;
+  const eventBus: EventBus = {
+    async publish(event) {
+      const context = contexts.current();
+      await producer.publish(context ? { ...event, context: { ...context } } : event);
+    },
+  };
   const outbox = options.database ? new PostgresOutboxDispatcher(options.database, delivery) : undefined;
   const transactionManager = options.database ?? createImmediateTransactionManager();
   const policyEvaluator = new InMemoryPolicyEvaluator([
@@ -80,6 +88,6 @@ export async function createApplication(options: { tokenKeys?: SigningKeyRing; d
   ]);
   const commandBus = createInMemoryCommandBus(handlers);
 
-  const handler = createHttpHandler({ commandBus, policyEvaluator });
+  const handler = createHttpHandler({ commandBus, policyEvaluator, contexts });
   return { handler, users, eventLog, audit, notifications, settings, outbox, close: async () => { await options.database?.close(); } };
 }
