@@ -11,6 +11,6 @@ export function createWelcomeEmailSubscriber(sender: NotificationSender) {
       to: String(event.data.email ?? ''),
       subject: 'Welcome',
       body: 'Your account was created.',
-    });
+    }, event.id);
   };
 }

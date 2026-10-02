@@ -34,6 +34,70 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
+        '400':
+          description: Invalid login request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '429':
+          description: Login attempts exceeded the configured limit
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /identity/auth/refresh:
+    post:
+      operationId: refreshSession
+      summary: Rotate the refresh token for an active session
+      description: Reuse of a consumed refresh token revokes the entire session family. Session expiry is absolute and is not extended by refresh.
+      tags: [identity]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Refreshed access and refresh tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Invalid refresh request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Invalid, expired, revoked, or reused refresh token
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /identity/auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke the session associated with the bearer access token
+      tags: [identity]
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '204':
+          description: Session revoked; all access and refresh tokens for this session are invalid
+        '401':
+          description: A valid access token for an active session is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
   /identity/me:
     get:
       operationId: getCurrentUser
@@ -94,6 +158,15 @@ components:
         password:
           type: string
           format: password
+          maxLength: 1024
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      additionalProperties: false
+      properties:
+        refresh_token:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{43}$'
     LoginResponse:
       type: object
       required: [data, meta]

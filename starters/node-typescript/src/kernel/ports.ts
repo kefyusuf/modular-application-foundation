@@ -16,6 +16,7 @@ export interface EventBus {
 }
 
 export interface DomainEvent {
+  id?: string;
   type: string;
   occurredAt: string;
   data: Record<string, unknown>;

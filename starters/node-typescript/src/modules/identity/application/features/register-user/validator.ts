@@ -6,3 +6,5 @@ export const registerUserInput = z.object({
 });
 
 export type RegisterUserInput = z.infer<typeof registerUserInput>;
+
+export const registerPasswordInput = z.object({ email: z.string().email(), password: z.string().min(8).max(1024) }).strict();

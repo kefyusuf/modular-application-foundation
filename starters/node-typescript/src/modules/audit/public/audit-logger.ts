@@ -7,5 +7,5 @@ export interface AuditEntry {
 }
 
 export interface AuditLogger {
-  record(entry: AuditEntry): Promise<void>;
+  record(entry: AuditEntry, idempotencyKey?: string): Promise<void>;
 }

@@ -6,5 +6,5 @@ export interface NotificationMessage {
 }
 
 export interface NotificationSender {
-  send(message: NotificationMessage): Promise<void>;
+  send(message: NotificationMessage, idempotencyKey?: string): Promise<void>;
 }

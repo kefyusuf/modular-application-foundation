@@ -23,3 +23,7 @@ export function loginFailed(email: string): DomainEvent {
     data: { email },
   };
 }
+
+export function sessionRevoked(userId: string, sessionId: string, reason: 'logout' | 'refresh_token_reuse' | 'missing_identity' = 'logout'): DomainEvent {
+  return { type: 'identity.session.revoked.v1', occurredAt: new Date().toISOString(), data: { userId, sessionId, reason } };
+}
