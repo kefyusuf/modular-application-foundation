@@ -4,6 +4,7 @@
 
 ### Added
 
+- GitHub Actions verification for the Node/TypeScript reference implementation on Node 20/22, including architecture/HTTP/persistence tests, PostgreSQL worker checks, dependency audit, and retained review artifacts.
 - Executing-query cancellation/termination tests on PostgreSQL, with server-side execution gating, original error codes, producer rollback, healthy-client reuse or replacement, and no callback replay.
 - Checked-out transaction connection-loss coverage proving producer rollback, original error propagation, no callback replay, and later transaction recovery in the same worker.
 - Real PostgreSQL idle-backend termination coverage proving the same Node worker can continue with a fresh connection and retained data.
@@ -31,6 +32,7 @@
 
 ### Changed
 
+- Upgrade the development test toolchain to patched Vitest 4 and Vite 6 releases while retaining Node 20 compatibility; ignore generated test reports.
 - Handle checked-out PostgreSQL client errors throughout transaction ownership and discard failed connections instead of allowing an unhandled event to terminate the process.
 - Handle idle PostgreSQL pool errors with a fixed diagnostic instead of allowing an unhandled error event to terminate the process.
 - Persistent application startup now rejects incomplete identity or consumer schemas before accepting requests.
