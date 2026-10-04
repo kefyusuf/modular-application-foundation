@@ -20,6 +20,7 @@ A runnable educational example with five modules, user registration, login, and 
 - versioned module migration catalogs with immutable history and transactional upgrades;
 - isolated HTTP request context propagated into identity events, integration envelopes, and audit entries;
 - real HTTP integration tests and executable module/layer boundary checks;
+- opt-in Docker PostgreSQL tests using independent driver connections;
 - HTTP adapter using `node:http` (no web framework lock-in);
 - RFC 9457-style problem details for errors;
 - runtime validation with zod at the untrusted boundary.
@@ -125,6 +126,20 @@ src/
 
 `npm test` runs unit tests, HTTP integration tests, and architecture checks. `npm run typecheck` checks both production and test sources; `npm run build` emits only production sources.
 
+### External PostgreSQL verification
+
+With Docker running and `postgres:16-alpine` available locally, run:
+
+```bash
+npm run test:postgres
+```
+
+The runner creates a uniquely named disposable PostgreSQL database in a container with temporary storage and an automatically assigned loopback port. It uses no existing `DATABASE_URL`, requires no signing keys, and does not pull images automatically. It waits for TCP readiness, runs the dedicated suite, and removes its own container after success or failure. Fixture authentication uses trust only for this temporary local test setup; it is not a deployment configuration.
+
+The suite exercises the production `pg` adapter through separate PostgreSQL backends: nested transaction rollback, concurrent async-scope isolation, contested refresh rotation/replay revocation, cleanup with locked rows and disjoint batches, independent outbox claims, and stale lease acknowledgement fencing. Five target-guard checks also run in the default suite; the eight database checks are skipped by `npm test` unless the fixture URL is supplied. Use the runner to supply it rather than an application database URL. Database lock and statement timeouts bound failures in concurrency tests.
+
+These are independent database connections in one test process. They do not establish production readiness, performance, remote TLS/network recovery, or recovery of separately deployed worker processes. The broader persistence/restart and HTTP coverage still uses PGlite.
+
 The HTTP suite starts the real application on an ephemeral loopback port for each test and closes the server afterwards. It covers registration and subscribers, policy denial without side effects, malformed input, legacy and standard login, account-specific lockout, successful-login counter reset, bearer identity lookup, health, and unknown routes. Standard login/current-user responses and authentication errors are validated against schemas read directly from the foundation OpenAPI file using YAML and Ajv. This validates the exercised response shapes, not the entire OpenAPI document.
 
 Authentication adapter tests cover salted password hashes, invalid passwords, unsigned/altered/foreign/expired tokens, algorithm allowlisting, issuer/audience/type validation, required claims, and not-before checks. Session tests cover rotation, replay, competing refreshes, logout, absolute expiry, key rotation, and loss of session state. HTTP refresh/logout responses are checked against the OpenAPI contract. Application tests cover denied current-user access and revocation when an identity is missing.
@@ -189,7 +204,7 @@ After initializing the PostgreSQL schemas, run `npm run prune:sessions` with `DA
 
 Embedded applications can call `await application.pruneExpiredSessions(Math.floor(Date.now() / 1000), 100)` in either storage mode. The optional batch limit defaults to 100 and accepts integers from 1 through 1000; the cutoff must be a nonnegative safe integer. The result counts removed families, not refresh digests. PostgreSQL selects families with row locks and `SKIP LOCKED`, then deletes history and sessions in one transaction. A zero result can also mean eligible rows are locked by another transaction.
 
-Maintenance has no automatic timer or HTTP endpoint. Schedule or repeat the command explicitly as needed. The family limit does not bound the number of history rows or the work required to scan existing tables; external PostgreSQL transport, independent worker contention, and high-volume performance have not been verified.
+Maintenance has no automatic timer or HTTP endpoint. Schedule or repeat the command explicitly as needed. The family limit does not bound the number of history rows or the work required to scan existing tables. The dedicated PostgreSQL suite verifies locked-family skipping and disjoint cleanup transactions over independent connections; high-volume performance remains unverified.
 
 ## JWT key configuration
 
