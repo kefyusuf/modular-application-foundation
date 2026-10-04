@@ -4,6 +4,7 @@
 
 ### Added
 
+- Checked-out transaction connection-loss coverage proving producer rollback, original error propagation, no callback replay, and later transaction recovery in the same worker.
 - Real PostgreSQL idle-backend termination coverage proving the same Node worker can continue with a fresh connection and retained data.
 - Real Node consumer process termination/recovery tests on PostgreSQL, preserving partial/full effects across lease reclamation without duplicate audit entries or queued notifications.
 - Read-only PostgreSQL outbox delivery summaries and an explicit JSON status CLI, with pending-state partition, expiry boundaries, and read-only driver coverage.
@@ -29,6 +30,7 @@
 
 ### Changed
 
+- Handle checked-out PostgreSQL client errors throughout transaction ownership and discard failed connections instead of allowing an unhandled event to terminate the process.
 - Handle idle PostgreSQL pool errors with a fixed diagnostic instead of allowing an unhandled error event to terminate the process.
 - Persistent application startup now rejects incomplete identity or consumer schemas before accepting requests.
 - Registration accepts a standard `password` alongside the separate legacy `passwordHash` mode; legacy login remains compatible for demo accounts and cannot authenticate standard password hashes.

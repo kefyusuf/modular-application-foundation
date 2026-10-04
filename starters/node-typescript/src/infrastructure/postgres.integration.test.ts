@@ -202,7 +202,8 @@ describe.skipIf(!connectionString)('external PostgreSQL connections', () => {
     } finally { globalThis.clearTimeout(timer); }
   }
 
-  type WorkerMessage = { phase: string; pid?: number; users?: number; args?: unknown[]; result?: { delivered: number; failed: number } };
+  type WorkerMessage = { phase: string; pid?: number; users?: number; args?: unknown[]; rejected?: boolean;
+    code?: string; invocations?: number; result?: { delivered: number; failed: number } };
 
   function worker(mode: string, entry = 'postgres-consumer-worker.mjs') {
     const child = fork(fileURLToPath(new URL(`../../scripts/${entry}`, import.meta.url)), [mode], {
@@ -255,6 +256,42 @@ describe.skipIf(!connectionString)('external PostgreSQL connections', () => {
       void running.message.catch(() => {});
       if (running.child.exitCode === null && running.child.signalCode === null) running.child.kill('SIGKILL');
       await bounded(running.exited, 'connection worker cleanup');
+    }
+  });
+
+  it('rejects a lost transaction between queries without replay and commits a later transaction', async () => {
+    const running = worker('transaction-gap', 'postgres-transaction-worker.mjs');
+    try {
+      const initial = await bounded(running.message, 'open transaction');
+      expect(initial.phase).toBe('transaction-open');
+      expect(typeof initial.pid).toBe('number');
+      // Independent observers cannot see the producer's uncommitted writes.
+      expect((await second.query("SELECT id FROM identity.users WHERE id = 'interrupted'")).rows).toEqual([]);
+      expect((await second.query('SELECT id FROM identity.outbox')).rows).toEqual([]);
+      const notice = nextWorkerMessage(running);
+      expect((await second.query<{ terminated: boolean }>('SELECT pg_terminate_backend($1) AS terminated', [initial.pid])).rows)
+        .toEqual([{ terminated: true }]);
+      expect(await bounded(notice, 'transaction error notice')).toEqual({ phase: 'transaction-error',
+        args: ['PostgreSQL transaction connection failed; transaction cannot continue'] });
+      const rejection = nextWorkerMessage(running);
+      running.child.send('resume');
+      expect(await bounded(rejection, 'transaction rejection')).toEqual({ phase: 'rejected', rejected: true, code: '57P01', invocations: 1 });
+      expect((await second.query("SELECT id FROM identity.users WHERE id = 'interrupted'")).rows).toEqual([]);
+      expect((await second.query('SELECT id FROM identity.outbox')).rows).toEqual([]);
+      const recovery = nextWorkerMessage(running);
+      running.child.send('recover');
+      const restored = await bounded(recovery, 'later transaction');
+      expect(restored).toMatchObject({ phase: 'recovered', invocations: 1 });
+      expect(typeof restored.pid).toBe('number');
+      expect(restored.pid).not.toBe(initial.pid);
+      expect((await bounded(running.exited, 'transaction worker exit')).code).toBe(0);
+      expect((await second.query("SELECT id FROM identity.users WHERE id IN ('interrupted', 'recovered') ORDER BY id")).rows)
+        .toEqual([{ id: 'recovered' }]);
+      expect((await second.query('SELECT id FROM identity.outbox')).rows).toEqual([]);
+    } finally {
+      void running.message.catch(() => {});
+      if (running.child.exitCode === null && running.child.signalCode === null) running.child.kill('SIGKILL');
+      await bounded(running.exited, 'transaction worker cleanup');
     }
   });
 
