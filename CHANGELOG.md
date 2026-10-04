@@ -4,6 +4,7 @@
 
 ### Added
 
+- Executing-query cancellation/termination tests on PostgreSQL, with server-side execution gating, original error codes, producer rollback, healthy-client reuse or replacement, and no callback replay.
 - Checked-out transaction connection-loss coverage proving producer rollback, original error propagation, no callback replay, and later transaction recovery in the same worker.
 - Real PostgreSQL idle-backend termination coverage proving the same Node worker can continue with a fresh connection and retained data.
 - Real Node consumer process termination/recovery tests on PostgreSQL, preserving partial/full effects across lease reclamation without duplicate audit entries or queued notifications.

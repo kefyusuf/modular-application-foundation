@@ -2,7 +2,8 @@ import { PostgresDatabase } from '../dist/infrastructure/postgres.js';
 import { PostgresOutboxEventBus } from '../dist/modules/identity/infrastructure/persistence/postgres-outbox.js';
 
 const target = new URL(process.env.FOUNDATION_POSTGRES_TEST_URL ?? 'invalid:');
-if (!process.send || process.argv[2] !== 'transaction-gap' || target.protocol !== 'postgresql:'
+const mode = process.argv[2];
+if (!process.send || !['transaction-gap', 'transaction-query'].includes(mode) || target.protocol !== 'postgresql:'
   || target.hostname !== '127.0.0.1' || target.search || target.hash || target.username !== 'postgres'
   || !/^\/foundation_pg_test_[a-f0-9]{32}$/.test(target.pathname)) {
   throw new Error('Transaction worker requires IPC and a disposable PostgreSQL fixture');
@@ -10,7 +11,10 @@ if (!process.send || process.argv[2] !== 'transaction-gap' || target.protocol !=
 const send = (message) => new Promise((resolve, reject) => {
   process.send(message, (error) => error ? reject(error) : resolve());
 });
-console.error = (...args) => { void send({ phase: 'transaction-error', args }).catch(() => {}); };
+console.error = (...args) => {
+  // Query cases observe the rejected operation; reserve notice IPC for the gap case.
+  if (mode === 'transaction-gap') void send({ phase: 'transaction-error', args }).catch(() => {});
+};
 const database = new PostgresDatabase(target.toString());
 let invocations = 0;
 try {
@@ -22,10 +26,15 @@ try {
       await new PostgresOutboxEventBus(database).publish({ type: 'identity.user.registered.v1',
         occurredAt: new Date().toISOString(), data: { userId: 'interrupted', email: 'interrupted@example.com' } });
       const { rows } = await database.query('SELECT pg_backend_pid() AS pid');
-      const command = new Promise((resolve) => process.once('message', resolve));
-      await send({ phase: 'transaction-open', pid: rows[0].pid });
-      if (await command !== 'resume') throw new Error('Unexpected transaction command');
-      // Intentionally return normally: the transaction manager must still reject a lost connection.
+      if (mode === 'transaction-gap') {
+        const command = new Promise((resolve) => process.once('message', resolve));
+        await send({ phase: 'transaction-open', pid: rows[0].pid });
+        if (await command !== 'resume') throw new Error('Unexpected transaction command');
+        // Return normally: the transaction manager must still reject a lost connection.
+      } else {
+        await send({ phase: 'transaction-open', pid: rows[0].pid });
+        await database.query('SELECT pg_sleep(10) /* foundation_inflight */');
+      }
     });
   } catch (error) { failure = error; }
   const recovery = new Promise((resolve) => process.once('message', resolve));
