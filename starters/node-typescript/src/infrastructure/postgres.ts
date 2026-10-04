@@ -8,6 +8,9 @@ export class PostgresDatabase implements SqlDatabase {
 
   constructor(connectionString: string) {
     this.pool = new Pool({ connectionString });
+    // pg has already evicted this idle client before emitting the pool error.
+    // Handle the event without exposing connection details or replaying work.
+    this.pool.on('error', () => { console.error('Idle PostgreSQL connection failed; removed from pool'); });
   }
 
   async query<Row extends object>(sql: string, values: unknown[] = []): Promise<SqlResult<Row>> {
