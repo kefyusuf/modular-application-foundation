@@ -34,14 +34,21 @@ import type { SqlDatabase } from '../kernel/sql.js';
 import { PostgresUserRepository } from '../modules/identity/infrastructure/persistence/postgres-user-repository.js';
 import { PostgresSessionStore } from '../modules/identity/infrastructure/auth/postgres-session-store.js';
 import { PostgresOutboxEventBus, PostgresOutboxDispatcher } from '../modules/identity/infrastructure/persistence/postgres-outbox.js';
+import { PostgresAuditLogger } from '../modules/audit/infrastructure/postgres-audit-logger.js';
+import { PostgresNotificationQueue } from '../modules/notification/infrastructure/postgres-notification-queue.js';
 
 export async function createApplication(options: { tokenKeys?: SigningKeyRing; database?: SqlDatabase } = {}) {
   if (options.database && !options.tokenKeys) throw new Error('Persistent storage requires configured JWT keys');
   if (options.database) await options.database.query('SELECT id FROM identity.users LIMIT 0');
+  if (options.database) await options.database.query('SELECT id FROM identity.sessions LIMIT 0');
+  if (options.database) await options.database.query('SELECT digest FROM identity.refresh_tokens LIMIT 0');
+  if (options.database) await options.database.query('SELECT id FROM identity.outbox LIMIT 0');
+  if (options.database) await options.database.query('SELECT id FROM audit.entries LIMIT 0');
+  if (options.database) await options.database.query('SELECT id FROM notification.messages LIMIT 0');
   const users = options.database ? new PostgresUserRepository(options.database) : new InMemoryUserRepository();
   const eventLog: string[] = [];
-  const audit = new InMemoryAuditLogger();
-  const notifications = new InMemoryNotificationSender();
+  const audit = options.database ? new PostgresAuditLogger(options.database) : new InMemoryAuditLogger();
+  const notifications = options.database ? new PostgresNotificationQueue(options.database) : new InMemoryNotificationSender();
   const settings = new InMemorySettingStore();
   await settings.set('security.max_login_attempts', 5);
 

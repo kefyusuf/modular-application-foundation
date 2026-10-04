@@ -10,6 +10,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SqlDatabase, SqlResult } from '../kernel/sql.js';
 import type { DomainEvent } from '../kernel/ports.js';
 import { migrateIdentity } from '../modules/identity/infrastructure/persistence/schema.js';
+import { migrateAudit } from '../modules/audit/infrastructure/schema.js';
+import { migrateNotification } from '../modules/notification/infrastructure/schema.js';
+import { PostgresAuditLogger } from '../modules/audit/infrastructure/postgres-audit-logger.js';
+import { PostgresNotificationQueue } from '../modules/notification/infrastructure/postgres-notification-queue.js';
 import { PostgresUserRepository } from '../modules/identity/infrastructure/persistence/postgres-user-repository.js';
 import { PostgresSessionStore } from '../modules/identity/infrastructure/auth/postgres-session-store.js';
 import { PostgresOutboxEventBus, PostgresOutboxDispatcher } from '../modules/identity/infrastructure/persistence/postgres-outbox.js';
@@ -60,10 +64,12 @@ describe('PostgreSQL persistence and outbox', () => {
     directory = await mkdtemp(path.join(tmpdir(), 'foundation-pg-test-'));
     database = new EmbeddedPostgres(directory);
     await migrateIdentity(database);
+    await migrateAudit(database);
+    await migrateNotification(database);
   }, 30000);
 
   beforeEach(async () => {
-    await database.query('TRUNCATE identity.refresh_tokens, identity.sessions, identity.outbox, identity.users');
+    await database.query('TRUNCATE identity.refresh_tokens, identity.sessions, identity.outbox, identity.users, audit.entries, notification.messages');
     users = new PostgresUserRepository(database);
     events = new PostgresOutboxEventBus(database);
   });
@@ -80,6 +86,16 @@ describe('PostgreSQL persistence and outbox', () => {
   async function register(email = 'user@example.com', id = 'user-1') {
     return new RegisterUserHandler(users, events, database).execute(new RegisterUserCommand(email, 'demo-credential', id));
   }
+
+  it.each(['sessions', 'refresh_tokens', 'outbox'] as const)('rejects startup when the identity %s table is missing', async (table) => {
+    await database.query(`ALTER TABLE identity.${table} RENAME TO unavailable_${table}`);
+    try {
+      const outcome = await createApplication({ database, tokenKeys: { activeKeyId: 'test', keys: { test: randomBytes(32) } } }).then(() => 'started', () => 'rejected');
+      expect(outcome).toBe('rejected');
+    } finally {
+      await database.query(`ALTER TABLE identity.unavailable_${table} RENAME TO ${table}`);
+    }
+  });
 
   it('commits the user and integration envelope together, and restores without new domain events', async () => {
     await register('User@Example.com');
@@ -172,6 +188,83 @@ describe('PostgreSQL persistence and outbox', () => {
     expect(await dispatcher.drain()).toEqual({ delivered: 1, failed: 0 });
     expect(audit.entries).toHaveLength(1);
     expect(notifications.sent).toHaveLength(1);
+  });
+
+  it('retains consumer effects and deduplication after a crash before outbox acknowledgement', async () => {
+    await register();
+    const keys = { activeKeyId: 'stable', keys: { stable: randomBytes(32) } };
+    const first = await createApplication({ database, tokenKeys: keys });
+    const dispatcher = new PostgresOutboxDispatcher(database, createSubscribingEventBus({ publish: async () => {} }, [
+      createAuditSubscriber(first.audit), createWelcomeEmailSubscriber(first.notifications),
+      async () => { throw new Error('Crash after effects, before acknowledgement'); },
+    ]));
+    expect(await dispatcher.drain()).toEqual({ delivered: 0, failed: 1 });
+    await first.close();
+    database = new EmbeddedPostgres(directory);
+    const restarted = await createApplication({ database, tokenKeys: keys });
+    expect(await restarted.audit.list()).toHaveLength(1);
+    expect(await restarted.notifications.list()).toHaveLength(1);
+    await database.query(`UPDATE identity.outbox SET available_at = now() - interval '1 second'`);
+    expect(await restarted.outbox!.drain()).toEqual({ delivered: 1, failed: 0 });
+    expect(await restarted.audit.list()).toHaveLength(1);
+    expect(await restarted.notifications.list()).toHaveLength(1);
+    expect((await database.query('SELECT status FROM notification.messages')).rows).toEqual([{ status: 'pending' }]);
+  }, 30000);
+
+  it('resumes a partially completed delivery after restart without repeating the audit effect', async () => {
+    await register();
+    const dispatcher = new PostgresOutboxDispatcher(database, createSubscribingEventBus({ publish: async () => {} }, [
+      createAuditSubscriber(new PostgresAuditLogger(database)),
+      async () => { throw new Error('Notification consumer unavailable'); },
+    ]));
+    expect(await dispatcher.drain()).toEqual({ delivered: 0, failed: 1 });
+    expect(await new PostgresNotificationQueue(database).list()).toEqual([]);
+    await database.close();
+    database = new EmbeddedPostgres(directory);
+    const restarted = await createApplication({ database, tokenKeys: { activeKeyId: 'test', keys: { test: randomBytes(32) } } });
+    await database.query(`UPDATE identity.outbox SET available_at = now() - interval '1 second'`);
+    expect(await restarted.outbox!.drain()).toEqual({ delivered: 1, failed: 0 });
+    expect(await restarted.audit.list()).toHaveLength(1);
+    expect(await restarted.notifications.list()).toHaveLength(1);
+  }, 30000);
+
+  it.each(['audit', 'notification'] as const)('does not retain a delivery receipt when the %s effect fails', async (consumer) => {
+    const entry = { action: 'test', actorId: 'actor', subject: 'user', occurredAt: new Date().toISOString(), data: {} };
+    const message = { channel: 'email' as const, to: 'user@example.com', subject: 'Welcome', body: 'Test' };
+    const audit = new PostgresAuditLogger(database);
+    const queue = new PostgresNotificationQueue(database);
+    const table = consumer === 'audit' ? 'audit.entries' : 'notification.messages';
+    const deliver = () => consumer === 'audit' ? audit.record(entry, 'event-1') : queue.send(message, 'event-1');
+    await database.query(`ALTER TABLE ${table} ADD CONSTRAINT reject_effect CHECK (false)`);
+    try {
+      await expect(deliver()).rejects.toThrow();
+      expect((await database.query(`SELECT event_id FROM ${table}`)).rows).toEqual([]);
+    } finally { await database.query(`ALTER TABLE ${table} DROP CONSTRAINT reject_effect`); }
+    await deliver();
+    await deliver();
+    expect((await database.query(`SELECT event_id FROM ${table}`)).rows).toEqual([{ event_id: 'event-1' }]);
+  });
+
+  it('deduplicates by delivery ID independently per consumer, not by message contents', async () => {
+    const audit = new PostgresAuditLogger(database);
+    const queue = new PostgresNotificationQueue(database);
+    const event = { id: 'event-1', type: 'identity.user.registered.v1', occurredAt: new Date().toISOString(), data: { userId: 'user-1', email: 'user@example.com' } };
+    for (const id of ['event-1', 'event-1', 'event-2', undefined, undefined]) {
+      await createAuditSubscriber(audit)({ ...event, id });
+      await createWelcomeEmailSubscriber(queue)({ ...event, id });
+    }
+    expect(await audit.list()).toHaveLength(4);
+    expect(await queue.list()).toHaveLength(4);
+  });
+
+  it('can reapply consumer schema initialization without discarding existing effects', async () => {
+    await register();
+    const app = await createApplication({ database, tokenKeys: { activeKeyId: 'test', keys: { test: randomBytes(32) } } });
+    await app.outbox!.drain();
+    await migrateAudit(database);
+    await migrateNotification(database);
+    expect(await app.audit.list()).toHaveLength(1);
+    expect(await app.notifications.list()).toHaveLength(1);
   });
 
   it('commits replay revocation and its outbox event despite returning an authentication error', async () => {
