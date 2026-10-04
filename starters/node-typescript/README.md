@@ -127,6 +127,14 @@ src/
 
 `npm test` runs unit tests, HTTP integration tests, and architecture checks. `npm run typecheck` checks both production and test sources; `npm run build` emits only production sources.
 
+### Pull request verification
+
+The [Node TypeScript workflow](../../.github/workflows/node-typescript.yml) runs for pull requests against any base branch, pushes to `main`, and manual dispatch. Automatic runs are scoped to starter, workflow, and OpenAPI changes. Each Node 20/22 job installs the lockfile, checks production/test types, runs the standard suite, and builds/runs the disposable PostgreSQL suite. The Node 22 job also rejects high or critical dependency advisories with `npm audit`. JUnit output and compiled sources are retained as review artifacts for seven days; jobs have a fifteen-minute limit.
+
+Actions are pinned by commit, checkout does not persist credentials, and the workflow requests only repository read access. It has no deployment/publishing step or application-secret requirement. Existing architecture, exercised API schema, migration, producer/consumer, and failure-recovery cases form the initial automated gates. This is not the complete [CI/CD standard](../../docs/standards/ci-cd.md): full contract compatibility, secret/SAST/license scanning, and container vulnerability scanning remain separate release requirements. The workflow does not configure branch protection or prove earlier stacked PRs passed it.
+
+Vitest 4.1.11 or later in the same major line and Vite 6.4.3 or later in the same major line replace the vulnerable earlier test toolchain. Vite is explicitly constrained to major 6 to preserve the repository's Node 20 compatibility rather than allowing the test runner to select a newer Vite major with a higher Node minimum. Use `npm ci` to reproduce the reviewed lockfile and `npm audit --audit-level=high` to repeat the dependency gate.
+
 ### External PostgreSQL verification
 
 With Docker running and `postgres:16-alpine` available locally, run:
