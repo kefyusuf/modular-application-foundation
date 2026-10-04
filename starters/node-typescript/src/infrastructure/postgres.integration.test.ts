@@ -295,6 +295,52 @@ describe.skipIf(!connectionString)('external PostgreSQL connections', () => {
     }
   });
 
+  it.each([
+    { action: 'terminate', code: '57P01', replace: true },
+    { action: 'cancel', code: '57014', replace: false },
+  ])('handles $action of an executing SQL statement without replay and commits a later transaction', async ({ action, code, replace }) => {
+    const running = worker('transaction-query', 'postgres-transaction-worker.mjs');
+    try {
+      const initial = await bounded(running.message, 'query transaction');
+      expect(initial.phase).toBe('transaction-open');
+      expect(typeof initial.pid).toBe('number');
+      // Observe server-side execution rather than assuming the worker has sent its query.
+      const deadline = Date.now() + 2000;
+      let executing = false;
+      do {
+        const activity = await second.query<{ executing: boolean }>(`SELECT
+          state = 'active' AND wait_event = 'PgSleep' AND query LIKE '%foundation_inflight%' AS executing
+          FROM pg_stat_activity WHERE pid = $1 AND datname = current_database()`, [initial.pid]);
+        executing = activity.rows[0]?.executing === true;
+        if (!executing) await setTimeout(20);
+      } while (!executing && Date.now() < deadline);
+      expect(executing).toBe(true);
+      expect((await second.query("SELECT id FROM identity.users WHERE id = 'interrupted'")).rows).toEqual([]);
+      expect((await second.query('SELECT id FROM identity.outbox')).rows).toEqual([]);
+      const rejection = nextWorkerMessage(running);
+      const sql = action === 'terminate' ? 'SELECT pg_terminate_backend($1) AS signalled' : 'SELECT pg_cancel_backend($1) AS signalled';
+      expect((await second.query<{ signalled: boolean }>(sql, [initial.pid])).rows).toEqual([{ signalled: true }]);
+      expect(await bounded(rejection, 'executing query rejection')).toEqual({ phase: 'rejected', rejected: true, code, invocations: 1 });
+      expect((await second.query("SELECT id FROM identity.users WHERE id = 'interrupted'")).rows).toEqual([]);
+      expect((await second.query('SELECT id FROM identity.outbox')).rows).toEqual([]);
+      const recovery = nextWorkerMessage(running);
+      running.child.send('recover');
+      const restored = await bounded(recovery, 'post-query recovery');
+      expect(restored).toMatchObject({ phase: 'recovered', invocations: 1 });
+      expect(typeof restored.pid).toBe('number');
+      if (replace) expect(restored.pid).not.toBe(initial.pid);
+      else expect(restored.pid).toBe(initial.pid);
+      expect((await bounded(running.exited, 'query worker exit')).code).toBe(0);
+      expect((await second.query("SELECT id FROM identity.users WHERE id IN ('interrupted', 'recovered') ORDER BY id")).rows)
+        .toEqual([{ id: 'recovered' }]);
+      expect((await second.query('SELECT id FROM identity.outbox')).rows).toEqual([]);
+    } finally {
+      void running.message.catch(() => {});
+      if (running.child.exitCode === null && running.child.signalCode === null) running.child.kill('SIGKILL');
+      await bounded(running.exited, 'executing query cleanup');
+    }
+  });
+
   it.each(['after-audit', 'after-effects'])('recovers from a killed consumer process %s without repeating durable effects', async (phase) => {
     await publish();
     const crashed = worker(phase);
