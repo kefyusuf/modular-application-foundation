@@ -36,7 +36,8 @@ export class PostgresDatabase implements SqlDatabase {
       await client.query('BEGIN');
       const result = await this.context.run(client, fn);
       if (connectionError) throw connectionError;
-      await client.query('COMMIT');
+      const commit = await client.query('COMMIT');
+      if (commit.command !== 'COMMIT') throw new Error('PostgreSQL transaction did not commit');
       return result;
     } catch (error) {
       try { await client.query('ROLLBACK'); } catch { discard = true; }

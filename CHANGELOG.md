@@ -32,6 +32,7 @@
 
 ### Changed
 
+- Reject PostgreSQL transactions when COMMIT reports ROLLBACK after a caught SQL error instead of returning an unpersisted success result.
 - Return sanitized HTTP 500 problem responses for unexpected registration and legacy login failures instead of exposing infrastructure error messages as client errors.
 - Upgrade the development test toolchain to patched Vitest 4 and Vite 6 releases while retaining Node 20 compatibility; ignore generated test reports.
 - Handle checked-out PostgreSQL client errors throughout transaction ownership and discard failed connections instead of allowing an unhandled event to terminate the process.

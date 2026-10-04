@@ -91,6 +91,34 @@ describe.skipIf(!connectionString)('external PostgreSQL connections', () => {
     expect(await new PostgresSessionStore(second).get('committed')).not.toBeNull();
   });
 
+  it.each([false, true])('rejects a silently rolled-back transaction after a caught SQL error (nested=%s)', async (nested) => {
+    let callbacks = 0;
+    let originalPid: number | undefined;
+    const fail = async () => {
+      await expect(first.query("INSERT INTO identity.users VALUES ('user-1', 'duplicate@example.com', 'fixture', 1)"))
+        .rejects.toMatchObject({ code: '23505' });
+    };
+    await expect(first.withinTransaction(async () => {
+      callbacks += 1;
+      originalPid = (await first.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      await session('aborted');
+      // Catch the SQL error and return normally, leaving PostgreSQL aborted.
+      if (nested) await first.withinTransaction(fail);
+      else await fail();
+      return 'must not report success';
+    })).rejects.toThrow('PostgreSQL transaction did not commit');
+
+    expect(callbacks).toBe(1);
+    expect(await new PostgresSessionStore(second).get('aborted')).toBeNull();
+    expect((await second.query('SELECT * FROM identity.refresh_tokens')).rows).toEqual([]);
+    const recoveredPid = await first.withinTransaction(async () => {
+      await session('after-abort');
+      return (await first.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    });
+    expect(recoveredPid).toBe(originalPid);
+    expect(await new PostgresSessionStore(second).get('after-abort')).not.toBeNull();
+  });
+
   it('isolates concurrent transaction context from queries outside its async scope', async () => {
     const ready = gate();
     const resume = gate();
