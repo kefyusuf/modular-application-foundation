@@ -4,6 +4,7 @@
 
 ### Added
 
+- Real PostgreSQL idle-backend termination coverage proving the same Node worker can continue with a fresh connection and retained data.
 - Real Node consumer process termination/recovery tests on PostgreSQL, preserving partial/full effects across lease reclamation without duplicate audit entries or queued notifications.
 - Read-only PostgreSQL outbox delivery summaries and an explicit JSON status CLI, with pending-state partition, expiry boundaries, and read-only driver coverage.
 - Disposable Docker PostgreSQL verification through the production driver, covering transaction isolation, refresh contention, concurrent cleanup, outbox claims, and stale lease acknowledgements.
@@ -28,6 +29,7 @@
 
 ### Changed
 
+- Handle idle PostgreSQL pool errors with a fixed diagnostic instead of allowing an unhandled error event to terminate the process.
 - Persistent application startup now rejects incomplete identity or consumer schemas before accepting requests.
 - Registration accepts a standard `password` alongside the separate legacy `passwordHash` mode; legacy login remains compatible for demo accounts and cannot authenticate standard password hashes.
 - Documented standard login validation/lockout errors and password length limit in the foundation OpenAPI example.

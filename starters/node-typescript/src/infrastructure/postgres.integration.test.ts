@@ -202,8 +202,10 @@ describe.skipIf(!connectionString)('external PostgreSQL connections', () => {
     } finally { globalThis.clearTimeout(timer); }
   }
 
-  function worker(mode: string) {
-    const child = fork(fileURLToPath(new URL('../../scripts/postgres-consumer-worker.mjs', import.meta.url)), [mode], {
+  type WorkerMessage = { phase: string; pid?: number; users?: number; args?: unknown[]; result?: { delivered: number; failed: number } };
+
+  function worker(mode: string, entry = 'postgres-consumer-worker.mjs') {
+    const child = fork(fileURLToPath(new URL(`../../scripts/${entry}`, import.meta.url)), [mode], {
       execArgv: [], stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
       env: { ...process.env, DATABASE_URL: '', FOUNDATION_POSTGRES_TEST_URL: connectionString! },
     });
@@ -213,13 +215,48 @@ describe.skipIf(!connectionString)('external PostgreSQL connections', () => {
       child.once('exit', (code, signal) => resolve({ code, signal }));
       child.once('error', () => resolve({ code: 1, signal: null }));
     });
-    const message = new Promise<{ phase: string; result?: { delivered: number; failed: number } }>((resolve, reject) => {
-      child.once('message', (value) => resolve(value as { phase: string; result?: { delivered: number; failed: number } }));
+    const message = new Promise<WorkerMessage>((resolve, reject) => {
+      child.once('message', (value) => resolve(value as WorkerMessage));
       child.once('error', reject);
       child.once('exit', () => reject(new Error(`Worker exited before checkpoint: ${stderr}`)));
     });
     return { child, exited, message };
   }
+
+  function nextWorkerMessage(running: ReturnType<typeof worker>) {
+    const response = Promise.race([
+      new Promise<WorkerMessage>((resolve) => running.child.once('message', (value) => resolve(value as WorkerMessage))),
+      running.exited.then(() => { throw new Error('Worker exited before its next message'); }),
+    ]);
+    // A preceding SQL assertion can fail before this promise is awaited.
+    void response.catch(() => {});
+    return response;
+  }
+
+  it('survives idle backend termination with a sanitized notice and a fresh connection', async () => {
+    const running = worker('idle', 'postgres-connection-worker.mjs');
+    try {
+      const initial = await bounded(running.message, 'idle connection');
+      expect(initial).toMatchObject({ phase: 'idle', users: 1 });
+      expect(typeof initial.pid).toBe('number');
+      const notice = nextWorkerMessage(running);
+      expect((await second.query<{ terminated: boolean }>('SELECT pg_terminate_backend($1) AS terminated', [initial.pid])).rows)
+        .toEqual([{ terminated: true }]);
+      expect(await bounded(notice, 'idle error notice')).toEqual({ phase: 'idle-error',
+        args: ['Idle PostgreSQL connection failed; removed from pool'] });
+      const recovery = nextWorkerMessage(running);
+      running.child.send('probe');
+      const restored = await bounded(recovery, 'new connection');
+      expect(restored).toMatchObject({ phase: 'recovered', users: 1 });
+      expect(typeof restored.pid).toBe('number');
+      expect(restored.pid).not.toBe(initial.pid);
+      expect((await bounded(running.exited, 'connection worker exit')).code).toBe(0);
+    } finally {
+      void running.message.catch(() => {});
+      if (running.child.exitCode === null && running.child.signalCode === null) running.child.kill('SIGKILL');
+      await bounded(running.exited, 'connection worker cleanup');
+    }
+  });
 
   it.each(['after-audit', 'after-effects'])('recovers from a killed consumer process %s without repeating durable effects', async (phase) => {
     await publish();
