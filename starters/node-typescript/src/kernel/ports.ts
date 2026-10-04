@@ -17,9 +17,15 @@ export interface EventBus {
 
 export interface DomainEvent {
   id?: string;
+  context?: EventContext;
   type: string;
   occurredAt: string;
   data: Record<string, unknown>;
+}
+
+export interface EventContext {
+  readonly requestId: string;
+  readonly correlationId: string;
 }
 
 export interface Repository<TAggregate, TId> {

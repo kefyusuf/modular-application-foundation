@@ -283,6 +283,21 @@ describe('PostgreSQL persistence and outbox', () => {
     expect(received).toHaveLength(1);
   });
 
+  it('retains producer event context through failed delivery and a worker restart', async () => {
+    const context = { requestId: 'origin-request', correlationId: 'origin-workflow' };
+    await events.publish({ type: 'identity.user.registered.v1', occurredAt: new Date().toISOString(), data: { userId: 'user-1', email: 'context@example.com' }, context });
+    const failed = new PostgresOutboxDispatcher(database, { publish: async () => { throw new Error('Delivery unavailable'); } });
+    expect(await failed.drain()).toEqual({ delivered: 0, failed: 1 });
+    await database.close();
+    database = new EmbeddedPostgres(directory);
+    await database.query(`UPDATE identity.outbox SET available_at = now() - interval '1 second'`);
+    const received: DomainEvent[] = [];
+    expect(await new PostgresOutboxDispatcher(database, { publish: async (event) => { received.push(event); } }).drain()).toEqual({ delivered: 1, failed: 0 });
+    expect(received[0]).toMatchObject({ context });
+    const stored = await database.query<{ envelope: Record<string, unknown> }>('SELECT envelope FROM identity.outbox');
+    expect(stored.rows[0].envelope).toMatchObject({ correlationid: 'origin-workflow', causationid: 'origin-request' });
+  }, 30000);
+
   it('uses stable delivery IDs to avoid repeating successful consumer effects on retry', async () => {
     await register();
     const audit = new InMemoryAuditLogger();
@@ -415,36 +430,48 @@ describe('PostgreSQL persistence and outbox', () => {
     await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
     const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const credentials = { email: 'http@example.com', password: 'a-long-password' };
-    const register = () => fetch(`${baseUrl}/api/v1/identity/users`, {
-      method: 'POST', headers: { 'content-type': 'application/json', 'x-actor-roles': 'admin' }, body: JSON.stringify(credentials),
+    const registerViaHttp = () => fetch(`${baseUrl}/api/v1/identity/users`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-actor-roles': 'admin', 'x-request-id': 'register-request', 'x-correlation-id': 'account-workflow' }, body: JSON.stringify(credentials),
     });
     try {
-      const registration = await register();
+      const registration = await registerViaHttp();
       expect(registration.status).toBe(201);
       await registration.json();
-      const duplicate = await register();
+      const stored = await database.query<{ event: DomainEvent; envelope: Record<string, unknown> }>('SELECT event, envelope FROM identity.outbox');
+      expect(stored.rows[0].event).toMatchObject({ context: { requestId: 'register-request', correlationId: 'account-workflow' } });
+      expect(stored.rows[0].envelope).toMatchObject({ correlationid: 'account-workflow', causationid: 'register-request' });
+      const duplicate = await registerViaHttp();
       expect(duplicate.status).toBe(409);
       await duplicate.json();
       expect((await app.audit.list())).toEqual([]);
       const response = await fetch(`${baseUrl}/api/v1/identity/auth/login`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(credentials),
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-request-id': 'login-request', 'x-correlation-id': 'account-workflow' }, body: JSON.stringify(credentials),
       });
       expect(response.status).toBe(200);
       const login = await response.json();
+      const loginEvent = await database.query<{ event: DomainEvent }>(`SELECT event FROM identity.outbox WHERE event->>'type' = 'identity.user.login_succeeded.v1'`);
+      expect(loginEvent.rows[0].event).toMatchObject({ context: { requestId: 'login-request', correlationId: 'account-workflow' } });
       const auth = { authorization: `Bearer ${login.data.access_token}` };
       const me = await fetch(`${baseUrl}/api/v1/identity/me`, { headers: auth });
       expect(me.status).toBe(200);
       expect((await me.json()).data.email).toBe(credentials.email);
       expect(await app.outbox!.drain()).toEqual({ delivered: 2, failed: 0 });
       expect((await app.audit.list())).toHaveLength(1);
+      expect((await app.audit.list())[0]).toMatchObject({ context: { requestId: 'register-request', correlationId: 'account-workflow' } });
       expect((await app.notifications.list())).toHaveLength(1);
-      const logout = await fetch(`${baseUrl}/api/v1/identity/auth/logout`, { method: 'POST', headers: auth });
+      const logout = await fetch(`${baseUrl}/api/v1/identity/auth/logout`, { method: 'POST', headers: { ...auth, 'x-request-id': 'logout-request', 'x-correlation-id': 'account-workflow' } });
       expect(logout.status).toBe(204);
       const rejected = await fetch(`${baseUrl}/api/v1/identity/me`, { headers: auth });
       expect(rejected.status).toBe(401);
       await rejected.json();
       expect(await app.outbox!.drain()).toEqual({ delivered: 1, failed: 0 });
       expect((await app.audit.list()).filter((entry) => entry.action === 'identity.session.revoked')).toHaveLength(1);
+      expect((await app.audit.list()).find((entry) => entry.action === 'identity.session.revoked')).toMatchObject({ context: { requestId: 'logout-request', correlationId: 'account-workflow' } });
+      await register('background@example.com', 'background-user');
+      const background = await database.query<{ event: DomainEvent; envelope: { id: string; correlationid: string; causationid?: string } }>(`SELECT event, envelope FROM identity.outbox WHERE event->'data'->>'email' = 'background@example.com'`);
+      expect(background.rows[0].event.context).toBeUndefined();
+      expect(background.rows[0].envelope.correlationid).toBe(background.rows[0].envelope.id);
+      expect(background.rows[0].envelope.causationid).toBeUndefined();
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => error ? reject(error) : resolve());

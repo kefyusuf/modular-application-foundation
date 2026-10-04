@@ -17,6 +17,7 @@ A runnable educational example with five modules, user registration, login, and 
 - optional PostgreSQL user/session adapters and a transactional outbox with leased delivery and retry;
 - durable audit entries and notification intents with consumer deduplication across restarts;
 - versioned module migration catalogs with immutable history and transactional upgrades;
+- isolated HTTP request context propagated into identity events, integration envelopes, and audit entries;
 - real HTTP integration tests and executable module/layer boundary checks;
 - HTTP adapter using `node:http` (no web framework lock-in);
 - RFC 9457-style problem details for errors;
@@ -149,6 +150,8 @@ Unknown routes return `404`. Errors use `application/problem+json` with `type`, 
 
 HTTP responses carry `X-Request-Id` and `X-Correlation-Id`. Caller IDs containing 1–128 ASCII letters, digits, dots, underscores, colons, or hyphens are accepted; otherwise a UUID is generated. A missing correlation ID defaults to the request ID. Standard success responses include these IDs in `meta`; errors include them at the top level. Token and current-user responses use `Cache-Control: no-store`.
 
+The composition root gives each application its own `AsyncLocalStorage` request-context store. The HTTP adapter enters that scope once using the normalized IDs; the producer event bus copies them into optional `DomainEvent.context` as `requestId` and `correlationId`. Audit entries retain that context in either storage mode. Concurrent requests keep separate scopes, and a subsequent request without IDs uses fresh normalized IDs. These caller-controlled identifiers are tracing metadata, not authentication or idempotency credentials.
+
 Both login routes share `security.max_login_attempts`, initialized to 5 in the composition root, and the same counter. The first five failed attempts return `401`; subsequent validly shaped attempts return `429`, including attempts with the correct credential. Attempts are counted per normalized email in the handler's memory. A successful login before lockout clears the counter. There is no expiry or unlock endpoint; restarting the process clears the counters. Registered users survive restarts only in PostgreSQL mode.
 
 ## Relationship to foundation contracts
@@ -163,7 +166,7 @@ The foundation [OpenAPI example](../../contracts/openapi/public-api.v1.yml) desc
 | Current identity | `GET /api/v1/identity/me` with bearer authentication | Verified token, identity lookup, read policy, and contract-shaped DTO |
 | Session lifecycle | Refresh rotation and bearer logout | Atomic rotation in both storage modes, replay revocation, and immediate access-token revocation |
 | Registration | Not included in the foundation OpenAPI example | `POST /api/v1/identity/users` with a demo actor policy check |
-| Request metadata | Request/correlation IDs in the contract and [API standard](../../docs/standards/api.md) | Returned in HTTP headers and standard response/error bodies; propagation into events/jobs remains future work |
+| Request metadata | Request/correlation IDs in the contract and [API standard](../../docs/standards/api.md) | Returned in HTTP responses and carried into identity events, outbox envelopes, and audit entries |
 
 The JWT adapter uses [jose](https://github.com/panva/jose), permits HS256, checks issuer/audience/type and required time claims, and issues access tokens with unique IDs and a session ID. Access tokens expire after at most 15 minutes, capped by the session's remaining lifetime. Authenticated users receive the demo `user` role; caller-provided actor headers do not change the bearer identity or its permissions.
 
@@ -196,7 +199,7 @@ This example generates a new key each time. To retain keys across starts, supply
 
 For rotation, configure both old and new keys and set the active ID to the new key. New tokens use that key; old tokens remain verifiable while the old key and their session records remain available. Remove the old key after its access tokens expire, or earlier to invalidate them immediately. Retaining keys alone does not preserve in-memory sessions. PostgreSQL mode requires configured keys and preserves sessions when both the database and required keys are retained.
 
-The [AsyncAPI example](../../contracts/asyncapi/events.v1.yml) defines an integration envelope with CloudEvents-style metadata and `data.user_id`. The skeleton publishes internal domain events with `type`, `occurredAt`, and `data.userId`. The PostgreSQL outbox stores both the internal event and an integration envelope with snake-case data fields. Its correlation ID currently defaults to the event ID; HTTP context propagation and full AsyncAPI validation remain future work. Local subscribers receive the internal event plus a stable delivery ID.
+The [AsyncAPI example](../../contracts/asyncapi/events.v1.yml) defines an integration envelope with CloudEvents-style metadata and `data.user_id`. The skeleton publishes internal domain events with `type`, `occurredAt`, and `data.userId`. The PostgreSQL outbox stores both the internal event and an integration envelope with snake-case data fields. For HTTP-produced events, `correlationid` carries the request's correlation ID and `causationid` identifies the originating request. Persisted event context survives delivery retries and worker restarts, so audit consumers use the producer's IDs rather than a worker's ambient context. Without event context, the envelope defaults `correlationid` to the event ID and omits `causationid`. Local subscribers receive the internal event plus a stable delivery ID. Full AsyncAPI validation, actor/tenant/trace metadata, and notification-worker context propagation remain future work.
 
 ## PostgreSQL mode
 
