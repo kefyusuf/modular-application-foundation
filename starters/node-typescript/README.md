@@ -297,6 +297,7 @@ Registration publishes `identity.user.registered.v1`; the subscribers record an 
 - Default persistence is in memory. PostgreSQL mode retains users, sessions/replay history, outbox events, audit entries, and queued notification intents; settings and login counters remain in memory.
 - Registration uses the access module's role-to-permission evaluator. The demo actor headers are not a production authentication mechanism.
 - Standard credentials are hashed with scrypt and standard access tokens are signed/verified. The legacy route still uses illustrative strings and demo tokens.
+- Unexpected registration and legacy login failures return HTTP 500 problem details without internal error messages. Malformed JSON and validation remain HTTP 400; known authorization, authentication, lockout, and conflict responses retain their status codes.
 - JWT keys support external configuration and rotation; a secret-manager adapter remains future work.
 - The default `createImmediateTransactionManager` has no commit/rollback semantics. PostgreSQL mode provides rollback for producer changes, while subscriber effects remain outside that transaction.
 - Outbox delivery uses in-process subscribers with durable local effect deduplication in PostgreSQL mode. No external broker or email delivery provider is implemented; external effects are not covered by this deduplication.

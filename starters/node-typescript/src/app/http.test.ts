@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApplication } from './application.js';
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
@@ -64,6 +64,7 @@ describe('HTTP adapter with real module wiring', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     if (!server?.listening) return;
     await new Promise<void>((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());
@@ -81,6 +82,25 @@ describe('HTTP adapter with real module wiring', () => {
       body: JSON.stringify(body),
     });
   }
+
+  it.each([
+    ['/api/v1/identity/users', { email: 'failure@example.com', password: 'a-long-password' }, 'save'],
+    ['/api/v1/identity/users', { email: 'failure@example.com', passwordHash: 'legacy-password-hash' }, 'save'],
+    ['/api/v1/identity/login', { email: 'failure@example.com', passwordHash: 'legacy-password-hash' }, 'findByEmail'],
+  ] as const)('sanitizes unexpected persistence failures for %s', async (path, body, operation) => {
+    const internalMessage = 'database connection failed: private-db.example:5432; internal query';
+    vi.spyOn(app.users, operation).mockRejectedValueOnce(new Error(internalMessage));
+
+    const response = await post(path, body, 'admin');
+    expect(response.status).toBe(500);
+    expect(response.headers.get('content-type')).toBe('application/problem+json');
+    const problem = await response.json();
+    expect(problem).toMatchObject({ status: 500, title: 'Internal server error', instance: path });
+    expect(problem).not.toHaveProperty('detail');
+    expect(JSON.stringify(problem)).not.toContain(internalMessage);
+    expect(problem.request_id).toBe(response.headers.get('x-request-id'));
+    expect(problem.correlation_id).toBe(response.headers.get('x-correlation-id'));
+  });
 
   it('carries HTTP request context into the registration audit entry', async () => {
     const response = await fetch(`${baseUrl}/api/v1/identity/users`, {
