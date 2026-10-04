@@ -21,6 +21,7 @@ A runnable educational example with five modules, user registration, login, and 
 - isolated HTTP request context propagated into identity events, integration envelopes, and audit entries;
 - real HTTP integration tests and executable module/layer boundary checks;
 - opt-in Docker PostgreSQL tests using independent driver connections;
+- read-only outbox delivery summaries without event contents;
 - HTTP adapter using `node:http` (no web framework lock-in);
 - RFC 9457-style problem details for errors;
 - runtime validation with zod at the untrusted boundary.
@@ -136,7 +137,7 @@ npm run test:postgres
 
 The runner creates a uniquely named disposable PostgreSQL database in a container with temporary storage and an automatically assigned loopback port. It uses no existing `DATABASE_URL`, requires no signing keys, and does not pull images automatically. It waits for TCP readiness, runs the dedicated suite, and removes its own container after success or failure. Fixture authentication uses trust only for this temporary local test setup; it is not a deployment configuration.
 
-The suite exercises the production `pg` adapter through separate PostgreSQL backends: nested transaction rollback, concurrent async-scope isolation, contested refresh rotation/replay revocation, cleanup with locked rows and disjoint batches, independent outbox claims, and stale lease acknowledgement fencing. Five target-guard checks also run in the default suite; the eight database checks are skipped by `npm test` unless the fixture URL is supplied. Use the runner to supply it rather than an application database URL. Database lock and statement timeouts bound failures in concurrency tests.
+The suite exercises the production `pg` adapter through separate PostgreSQL backends: nested transaction rollback, concurrent async-scope isolation, contested refresh rotation/replay revocation, cleanup with locked rows and disjoint batches, independent outbox claims, stale lease acknowledgement fencing, and read-only delivery summaries. Five target-guard checks also run in the default suite; the nine database checks are skipped by `npm test` unless the fixture URL is supplied. Use the runner to supply it rather than an application database URL. Database lock and statement timeouts bound failures in concurrency tests.
 
 These are independent database connections in one test process. They do not establish production readiness, performance, remote TLS/network recovery, or recovery of separately deployed worker processes. The broader persistence/restart and HTTP coverage still uses PGlite.
 
@@ -246,6 +247,22 @@ The shared runner stores `version`, `name`, a SHA-256 checksum of the entry, and
 Run the same command to adopt schemas created by the earlier unversioned initializer. Initial statements use `IF NOT EXISTS`, so records are retained while version 1 is recorded. This adoption assumes those schemas match the earlier initializer; checksums describe migration source, not the actual database structure. The runner does not detect manual schema drift or repair a dropped table from an already applied migration. Use a new migration or an explicit operational repair for that situation.
 
 Run one migration process at a time. Concurrent migration coordination, down migrations, and nontransactional SQL operations such as `CREATE INDEX CONCURRENTLY` are not supported by this runner.
+
+### Outbox delivery status
+
+With the identity schema initialized and `DATABASE_URL` configured, run `npm run outbox:status`. The command prints one JSON summary and closes its database pool. It does not require JWT keys, deliver events, renew leases, or mutate records. Embedded PostgreSQL applications can call `await application.outboxStatus.read()`; `outboxStatus` is undefined in memory mode.
+
+| Field | Meaning at the query snapshot |
+|---|---|
+| `pending` | All rows without a delivery acknowledgement |
+| `ready` | Pending rows whose availability time has arrived and whose lease is absent or expired |
+| `leased` | Pending rows with a lease that has not expired |
+| `deferred` | Pending rows whose availability time is in the future and which have no active lease |
+| `delivered` | Rows with a delivery acknowledgement |
+| `attemptedPending` | Pending rows with at least one claim attempt; this does not count failures |
+| `oldestPendingAt` | Earliest pending event occurrence time as UTC ISO text, or `null` |
+
+The three pending categories are disjoint: `pending = ready + leased + deferred`. A lease expiring exactly at the snapshot time is expired; availability at that time is ready. All fields come from one SQL statement. Output contains no event/envelope contents, identifiers, or stored error text. This is a current snapshot, not a historical metric, worker heartbeat, alert system, or notification-provider delivery report. It scans the outbox; high-volume query performance and retention remain future work. No status HTTP endpoint is exposed.
 
 The SQL transaction manager keeps all queries in a transaction on the same connection. Registration saves the user and outbox event together; logout and replay revocation save the state change and event together. An outbox write failure rolls back those changes. Failed-login events commit even though the caller receives an authentication error.
 

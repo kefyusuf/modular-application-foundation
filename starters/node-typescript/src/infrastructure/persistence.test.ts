@@ -18,6 +18,7 @@ import { PostgresNotificationQueue } from '../modules/notification/infrastructur
 import { PostgresUserRepository } from '../modules/identity/infrastructure/persistence/postgres-user-repository.js';
 import { PostgresSessionStore } from '../modules/identity/infrastructure/auth/postgres-session-store.js';
 import { PostgresOutboxEventBus, PostgresOutboxDispatcher } from '../modules/identity/infrastructure/persistence/postgres-outbox.js';
+import { PostgresOutboxStatusReader } from '../modules/identity/infrastructure/persistence/postgres-outbox-status.js';
 import { JwtTokenService } from '../modules/identity/infrastructure/auth/jwt-token-service.js';
 import { RegisterUserHandler } from '../modules/identity/application/features/register-user/handler.js';
 import { RegisterUserCommand } from '../modules/identity/application/features/register-user/command.js';
@@ -99,6 +100,51 @@ describe('PostgreSQL persistence and outbox', () => {
   async function register(email = 'user@example.com', id = 'user-1') {
     return new RegisterUserHandler(users, events, database).execute(new RegisterUserCommand(email, 'demo-credential', id));
   }
+
+  it('reports zero counts and no oldest timestamp for an empty outbox', async () => {
+    expect(await new PostgresOutboxStatusReader(database).read()).toEqual({
+      pending: 0, ready: 0, leased: 0, deferred: 0, delivered: 0, attemptedPending: 0, oldestPendingAt: null,
+    });
+  });
+
+  it('partitions pending delivery states without exposing or changing stored contents', async () => {
+    await database.query(`INSERT INTO identity.outbox
+      (id, event, envelope, occurred_at, available_at, claimed_until, attempts, delivered_at, last_error) VALUES
+      ('ready', '{"secret":"hidden"}', '{}', '2000-01-01Z', now() - interval '1 hour', NULL, 0, NULL, NULL),
+      ('expired-lease', '{}', '{}', '2000-01-02Z', now() - interval '1 hour', now() - interval '1 hour', 2, NULL, 'private failure'),
+      ('leased', '{}', '{}', '2000-01-03Z', now() - interval '1 hour', now() + interval '1 hour', 1, NULL, NULL),
+      ('leased-future', '{}', '{}', '2000-01-04Z', now() + interval '1 hour', now() + interval '1 hour', 3, NULL, NULL),
+      ('deferred', '{}', '{}', '2000-01-05Z', now() + interval '1 hour', NULL, 1, NULL, NULL),
+      ('expired-deferred', '{}', '{}', '2000-01-06Z', now() + interval '1 hour', now() - interval '1 hour', 1, NULL, NULL),
+      ('delivered', '{}', '{}', '1999-01-01Z', now() - interval '1 hour', NULL, 1, now(), NULL)`);
+    const before = (await database.query('SELECT * FROM identity.outbox ORDER BY id')).rows;
+    const reader = new PostgresOutboxStatusReader(database);
+    expect(await reader.read()).toEqual({
+      pending: 6, ready: 2, leased: 2, deferred: 2, delivered: 1, attemptedPending: 5,
+      oldestPendingAt: '2000-01-01T00:00:00.000Z',
+    });
+    expect((await database.query('SELECT * FROM identity.outbox ORDER BY id')).rows).toEqual(before);
+    await database.query('UPDATE identity.outbox SET delivered_at = now(), claimed_until = NULL');
+    expect(await reader.read()).toEqual({
+      pending: 0, ready: 0, leased: 0, deferred: 0, delivered: 7, attemptedPending: 0, oldestPendingAt: null,
+    });
+  });
+
+  it('exposes SQL outbox status through the composed application', async () => {
+    const app = await createApplication({ database, tokenKeys: { activeKeyId: 'test', keys: { test: randomBytes(32) } } });
+    await register();
+    expect(await app.outboxStatus!.read()).toMatchObject({ pending: 1, ready: 1, delivered: 0 });
+    await app.outbox!.drain();
+    expect(await app.outboxStatus!.read()).toMatchObject({ pending: 0, delivered: 1, oldestPendingAt: null });
+  });
+
+  it('treats availability and lease expiry at the snapshot time as ready', async () => {
+    await database.withinTransaction(async () => {
+      await database.query(`INSERT INTO identity.outbox (id, event, envelope, occurred_at, available_at, claimed_until)
+        VALUES ('boundary', '{}', '{}', now(), now(), now())`);
+      expect(await new PostgresOutboxStatusReader(database).read()).toMatchObject({ pending: 1, ready: 1, leased: 0, deferred: 0 });
+    });
+  });
 
   it('prunes bounded expired SQL families atomically while keeping live replay history', async () => {
     await register();

@@ -13,6 +13,7 @@
     "dev": "tsx src/app/main.ts",
     "migrate": "tsx src/app/migrate.ts",
     "prune:sessions": "tsx src/app/prune-sessions.ts",
+    "outbox:status": "tsx src/app/outbox-status.ts",
     "test": "vitest run",
     "test:postgres": "node scripts/test-postgres.mjs",
     "typecheck": "tsc -p tsconfig.test.json"
