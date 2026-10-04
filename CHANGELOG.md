@@ -4,6 +4,8 @@
 
 ### Added
 
+- Disposable Docker PostgreSQL verification through the production driver, covering transaction isolation, refresh contention, concurrent cleanup, outbox claims, and stale lease acknowledgements.
+- Loopback fixture target guards and bounded database lock/statement timeouts for the optional integration suite.
 - Explicit expired-session maintenance in memory and PostgreSQL, with refresh-history deletion and a PostgreSQL CLI command.
 - Cleanup tests for expiry boundaries, batch limits, retained replay protection, invalid parameters, transaction rollback, and missing database configuration.
 - Isolated HTTP request/correlation context on identity events, persistent integration envelopes, and audit entries, with concurrency and retry/restart coverage.
