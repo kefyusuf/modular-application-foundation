@@ -5,6 +5,7 @@ export function writeProblem(
   status: number,
   title: string,
   detail?: string,
+  context?: { request_id: string; correlation_id: string; instance?: string },
 ): void {
   res.writeHead(status, { 'content-type': 'application/problem+json' });
   res.end(
@@ -13,6 +14,7 @@ export function writeProblem(
       title,
       status,
       ...(detail ? { detail } : {}),
+      ...context,
     }),
   );
 }

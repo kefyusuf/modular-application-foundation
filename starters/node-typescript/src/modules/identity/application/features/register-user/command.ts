@@ -3,5 +3,6 @@ export class RegisterUserCommand {
     public readonly email: string,
     public readonly passwordHash: string,
     public readonly userId: string,
+    public readonly credentialKind: 'passwordHash' | 'password' = 'passwordHash',
   ) {}
 }

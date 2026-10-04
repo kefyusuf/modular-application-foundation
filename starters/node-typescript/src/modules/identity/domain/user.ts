@@ -23,6 +23,14 @@ export class User {
     return this.passwordHash === passwordHash;
   }
 
+  static restore(id: string, email: Email, passwordDigest: string): User {
+    return new User(id, email, passwordDigest, []);
+  }
+
+  getPasswordDigest(): string {
+    return this.passwordHash;
+  }
+
   pullDomainEvents(): DomainEvent[] {
     const events = this.domainEvents;
     this.domainEvents = [];
