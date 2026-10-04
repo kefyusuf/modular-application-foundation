@@ -16,6 +16,7 @@ A runnable educational example with five modules, user registration, login, and 
 - in-memory adapters (repository, event bus, transaction manager);
 - optional PostgreSQL user/session adapters and a transactional outbox with leased delivery and retry;
 - durable audit entries and notification intents with consumer deduplication across restarts;
+- versioned module migration catalogs with immutable history and transactional upgrades;
 - real HTTP integration tests and executable module/layer boundary checks;
 - HTTP adapter using `node:http` (no web framework lock-in);
 - RFC 9457-style problem details for errors;
@@ -126,7 +127,7 @@ The HTTP suite starts the real application on an ephemeral loopback port for eac
 
 Authentication adapter tests cover salted password hashes, invalid passwords, unsigned/altered/foreign/expired tokens, algorithm allowlisting, issuer/audience/type validation, required claims, and not-before checks. Session tests cover rotation, replay, competing refreshes, logout, absolute expiry, key rotation, and loss of session state. HTTP refresh/logout responses are checked against the OpenAPI contract. Application tests cover denied current-user access and revocation when an identity is missing.
 
-Persistence tests run PostgreSQL SQL against a temporary, filesystem-backed [PGlite database](https://pglite.dev/docs/). They cover transaction rollback, normalized-email uniqueness, optimistic versions, reopening persistent users/sessions/replay history, outbox retry and lease recovery, stable delivery IDs, and the HTTP flow with SQL adapters. Consumer tests reopen the database after partial delivery and after effects complete before acknowledgement, verify deduplication survives restart, and verify failed effects leave no delivery receipt. PGlite uses one connection; these tests do not verify the `pg` network transport or competing workers on an external PostgreSQL server.
+Persistence tests run PostgreSQL SQL against a temporary, filesystem-backed [PGlite database](https://pglite.dev/docs/). They cover transaction rollback, normalized-email uniqueness, optimistic versions, reopening persistent users/sessions/replay history, outbox retry and lease recovery, stable delivery IDs, and the HTTP flow with SQL adapters. Consumer tests reopen the database after partial delivery and after effects complete before acknowledgement, verify deduplication survives restart, and verify failed effects leave no delivery receipt. Migration tests cover one-time upgrades, persistent history, changed/removed/reordered applied migrations, invalid catalogs, failed statements/history writes, whole-batch rollback, and adoption of the earlier unversioned schemas. PGlite uses one connection; these tests do not verify the `pg` network transport or competing workers on an external PostgreSQL server.
 
 The architecture suite uses the TypeScript parser and module resolver to inspect production source dependencies. It rejects private cross-module access, application-to-infrastructure shortcuts, domain dependencies outside its own domain and kernel ports, private dependencies in public contracts, kernel dependencies on application/modules, and HTTP/interface access to domain, infrastructure, or repository ports. The composition root may wire concrete adapters. Test files are excluded from the production graph because integration tests intentionally assemble modules and inspect adapters.
 
@@ -207,7 +208,17 @@ npm run migrate
 npm run dev
 ```
 
-`npm run migrate` creates the identity-owned users, sessions, refresh-token history, and outbox tables, audit-owned entries, and notification-owned queued messages in one transaction. Run it again when upgrading from the earlier identity-only schema; existing records are retained. It is an idempotent initial schema initializer, not a versioned migration system. Startup checks all six required tables are available; it does not run migrations automatically. Each module's adapter reads only its own tables.
+`npm run migrate` applies the identity, audit, and notification migration catalogs in one transaction. The initial versions create identity-owned users, sessions, refresh-token history, and outbox tables, audit-owned entries, and notification-owned queued messages. Each module owns its tables and migration history. Startup checks all six required application tables are available; it does not run migrations automatically.
+
+### Versioned migrations
+
+Each module exports an ordered catalog from its infrastructure `schema.ts`. Entries contain a positive integer `version`, a nonempty `name`, and SQL `statements`. Add a new entry with a higher version to evolve the schema; retain every applied entry unchanged. Version gaps are allowed, but inserting an older version ahead of an already applied higher version is rejected.
+
+The shared runner stores `version`, `name`, a SHA-256 checksum of the entry, and `applied_at` in each module's `schema_migrations` table. Re-running the command skips matching applied entries and runs only pending ones. Editing an applied name or statement (including whitespace), removing an applied entry, or using an incompatible older catalog stops the command before pending SQL executes. A statement or history-write failure rolls back the pending batch; the CLI's outer transaction also rolls back changes to preceding modules in that run.
+
+Run the same command to adopt schemas created by the earlier unversioned initializer. Initial statements use `IF NOT EXISTS`, so records are retained while version 1 is recorded. This adoption assumes those schemas match the earlier initializer; checksums describe migration source, not the actual database structure. The runner does not detect manual schema drift or repair a dropped table from an already applied migration. Use a new migration or an explicit operational repair for that situation.
+
+Run one migration process at a time. Concurrent migration coordination, down migrations, and nontransactional SQL operations such as `CREATE INDEX CONCURRENTLY` are not supported by this runner.
 
 The SQL transaction manager keeps all queries in a transaction on the same connection. Registration saves the user and outbox event together; logout and replay revocation save the state change and event together. An outbox write failure rolls back those changes. Failed-login events commit even though the caller receives an authentication error.
 
