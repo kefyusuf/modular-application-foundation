@@ -13,6 +13,7 @@ A runnable educational example with five modules, user registration, login, and 
 - **login** use case with success/failure events and max-attempt lockout;
 - contract-shaped authentication with server-side password hashing and JWT verification behind identity ports;
 - refresh token rotation, session revocation, and configurable JWT signing/verification keys;
+- explicit maintenance of expired session families and their refresh-token history;
 - in-memory adapters (repository, event bus, transaction manager);
 - optional PostgreSQL user/session adapters and a transactional outbox with leased delivery and retry;
 - durable audit entries and notification intents with consumer deduplication across restarts;
@@ -180,7 +181,15 @@ Clients must serialize refresh requests and replace the previous refresh token w
 
 Logout revokes the caller's current session, not every session for that user. All bearer authentication checks the session store, so revocation takes effect immediately. A second logout with the revoked token returns `401`. Logout requires an unexpired access token; refresh first if the access token has expired. Logout and refresh replay publish `identity.session.revoked.v1`, which the audit subscriber records without credentials or token values.
 
-The default adapter retains session records and replay history in memory. Restarting it invalidates every session, even when signing keys are retained. PostgreSQL mode retains these records across restarts; neither adapter currently prunes expired sessions or replay history.
+The default adapter retains session records and replay history in memory. Restarting it invalidates every session, even when signing keys are retained. PostgreSQL mode retains these records across restarts. Both adapters support explicit expiry maintenance.
+
+### Session maintenance
+
+After initializing the PostgreSQL schemas, run `npm run prune:sessions` with `DATABASE_URL` configured. Each invocation removes up to 100 session families whose absolute expiry is at or before the current Unix time in seconds. It removes all refresh digests belonging to those families, including consumed tokens. Unexpired families retain their replay history, including revoked families until their absolute expiry. Users, audit entries, and outbox events are retained.
+
+Embedded applications can call `await application.pruneExpiredSessions(Math.floor(Date.now() / 1000), 100)` in either storage mode. The optional batch limit defaults to 100 and accepts integers from 1 through 1000; the cutoff must be a nonnegative safe integer. The result counts removed families, not refresh digests. PostgreSQL selects families with row locks and `SKIP LOCKED`, then deletes history and sessions in one transaction. A zero result can also mean eligible rows are locked by another transaction.
+
+Maintenance has no automatic timer or HTTP endpoint. Schedule or repeat the command explicitly as needed. The family limit does not bound the number of history rows or the work required to scan existing tables; external PostgreSQL transport, independent worker contention, and high-volume performance have not been verified.
 
 ## JWT key configuration
 
@@ -229,7 +238,7 @@ The CLI polls the outbox every second and closes the server, pending poll, and d
 
 Audit and notification each persist a unique event ID with their effect in a single row, using PostgreSQL [ON CONFLICT](https://www.postgresql.org/docs/current/sql-insert.html) to skip repeated delivery. This row acts as a durable consumer receipt: restarting between an effect and the outbox acknowledgement does not repeat the audit entry or queued notification. Consumers commit independently; retry resumes incomplete work if one succeeds and another fails. Calls without an idempotency key are independent operations and are not deduplicated.
 
-`PostgresAuditLogger` stores audit entries; `PostgresNotificationQueue` stores notification intents with `pending` status. Queue acceptance completes local outbox delivery, but does not mean an email was sent. No external provider or notification delivery worker is implemented; that worker will need its own retry and provider idempotency strategy. Both adapters expose `list()` for local inspection; there is no inspection HTTP API. In-memory adapters expose the same helper. Settings and login counters remain in memory. There is no lease heartbeat, dead-letter handling, expiry cleanup, or strict delivery-order guarantee.
+`PostgresAuditLogger` stores audit entries; `PostgresNotificationQueue` stores notification intents with `pending` status. Queue acceptance completes local outbox delivery, but does not mean an email was sent. No external provider or notification delivery worker is implemented; that worker will need its own retry and provider idempotency strategy. Both adapters expose `list()` for local inspection; there is no inspection HTTP API. In-memory adapters expose the same helper. Settings and login counters remain in memory. There is no lease heartbeat, dead-letter handling, outbox/audit/notification retention cleanup, or strict delivery-order guarantee.
 
 ## Event flow
 
@@ -244,6 +253,6 @@ Registration publishes `identity.user.registered.v1`; the subscribers record an 
 - The default `createImmediateTransactionManager` has no commit/rollback semantics. PostgreSQL mode provides rollback for producer changes, while subscriber effects remain outside that transaction.
 - Outbox delivery uses in-process subscribers with durable local effect deduplication in PostgreSQL mode. No external broker or email delivery provider is implemented; external effects are not covered by this deduplication.
 - PostgreSQL enforces normalized-email uniqueness and optimistic user versions. No settings HTTP API or timed login unlock is implemented.
-- Tests cover registration, policy, subscribers, concurrency, login, settings, HTTP integration, authentication adapters, exercised OpenAPI responses, and module/layer imports. Full event contract conformance and manifest validation remain future work.
+- Tests cover registration, policy, subscribers, concurrency, login, settings, HTTP integration, authentication adapters, session cleanup boundaries/limits/rollback, exercised OpenAPI responses, and module/layer imports. Full event contract conformance and manifest validation remain future work.
 
 The architecture is the product here, not the demo features.

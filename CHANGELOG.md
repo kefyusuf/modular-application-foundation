@@ -4,6 +4,8 @@
 
 ### Added
 
+- Explicit expired-session maintenance in memory and PostgreSQL, with refresh-history deletion and a PostgreSQL CLI command.
+- Cleanup tests for expiry boundaries, batch limits, retained replay protection, invalid parameters, transaction rollback, and missing database configuration.
 - Isolated HTTP request/correlation context on identity events, persistent integration envelopes, and audit entries, with concurrency and retry/restart coverage.
 - Versioned per-module SQL migration catalogs and history with source checksums, append-only applied versions, and transactional pending batches.
 - Migration tests for persistent one-time execution, incompatible catalog rejection, rollback, and data-preserving adoption of earlier unversioned schemas.
