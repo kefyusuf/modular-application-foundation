@@ -6,6 +6,7 @@ import { identityMigrations } from '../modules/identity/infrastructure/persisten
 import { PostgresSessionStore } from '../modules/identity/infrastructure/auth/postgres-session-store.js';
 import { RefreshTokenReuseError } from '../modules/identity/public/auth-contracts.js';
 import { PostgresOutboxDispatcher, PostgresOutboxEventBus } from '../modules/identity/infrastructure/persistence/postgres-outbox.js';
+import { PostgresOutboxStatusReader } from '../modules/identity/infrastructure/persistence/postgres-outbox-status.js';
 
 const connectionString = process.env.FOUNDATION_POSTGRES_TEST_URL;
 
@@ -186,6 +187,16 @@ describe.skipIf(!connectionString)('external PostgreSQL connections', () => {
     await new PostgresOutboxEventBus(first).publish({ type: 'identity.user.registered.v1', occurredAt: new Date().toISOString(), data: { userId: 'user-1' } });
   }
 
+  it('reads a typed pending summary in a PostgreSQL read-only transaction', async () => {
+    await publish();
+    const status = await second.withinTransaction(async () => {
+      await second.query('SET TRANSACTION READ ONLY');
+      return new PostgresOutboxStatusReader(second).read();
+    });
+    expect(status).toEqual({ pending: 1, ready: 1, leased: 0, deferred: 0, delivered: 0,
+      attemptedPending: 0, oldestPendingAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/) });
+  });
+
   it('claims different outbox events while another worker is still delivering', async () => {
     await publish();
     await publish();
@@ -197,9 +208,11 @@ describe.skipIf(!connectionString)('external PostgreSQL connections', () => {
     } }).drain(1);
     try {
       await waitUntilReady(ready, worker);
+      expect(await new PostgresOutboxStatusReader(second).read()).toMatchObject({ pending: 2, ready: 1, leased: 1, deferred: 0, delivered: 0 });
       expect(await new PostgresOutboxDispatcher(second, { publish: async (event) => { ids.push(event.id!); } }).drain(1))
         .toEqual({ delivered: 1, failed: 0 });
       expect(new Set(ids).size).toBe(2);
+      expect(await new PostgresOutboxStatusReader(second).read()).toMatchObject({ pending: 1, ready: 0, leased: 1, delivered: 1 });
     } finally { resume.release(); expect(await worker).toEqual({ delivered: 1, failed: 0 }); }
     expect((await second.query('SELECT attempts FROM identity.outbox WHERE delivered_at IS NOT NULL')).rows)
       .toEqual([{ attempts: 1 }, { attempts: 1 }]);

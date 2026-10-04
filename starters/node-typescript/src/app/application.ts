@@ -35,6 +35,7 @@ import type { SqlDatabase } from '../kernel/sql.js';
 import { PostgresUserRepository } from '../modules/identity/infrastructure/persistence/postgres-user-repository.js';
 import { PostgresSessionStore } from '../modules/identity/infrastructure/auth/postgres-session-store.js';
 import { PostgresOutboxEventBus, PostgresOutboxDispatcher } from '../modules/identity/infrastructure/persistence/postgres-outbox.js';
+import { PostgresOutboxStatusReader } from '../modules/identity/infrastructure/persistence/postgres-outbox-status.js';
 import { PostgresAuditLogger } from '../modules/audit/infrastructure/postgres-audit-logger.js';
 import { PostgresNotificationQueue } from '../modules/notification/infrastructure/postgres-notification-queue.js';
 
@@ -66,6 +67,7 @@ export async function createApplication(options: { tokenKeys?: SigningKeyRing; d
     },
   };
   const outbox = options.database ? new PostgresOutboxDispatcher(options.database, delivery) : undefined;
+  const outboxStatus = options.database ? new PostgresOutboxStatusReader(options.database) : undefined;
   const transactionManager = options.database ?? createImmediateTransactionManager();
   const policyEvaluator = new InMemoryPolicyEvaluator([
     { role: 'admin', permissions: [Permissions.UserCreate, Permissions.UserRead, Permissions.Login] },
@@ -89,7 +91,7 @@ export async function createApplication(options: { tokenKeys?: SigningKeyRing; d
   const commandBus = createInMemoryCommandBus(handlers);
 
   const handler = createHttpHandler({ commandBus, policyEvaluator, contexts });
-  return { handler, users, eventLog, audit, notifications, settings, outbox,
+  return { handler, users, eventLog, audit, notifications, settings, outbox, outboxStatus,
     pruneExpiredSessions: sessions.pruneExpired.bind(sessions),
     close: async () => { await options.database?.close(); } };
 }
