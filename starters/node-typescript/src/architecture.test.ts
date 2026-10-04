@@ -52,7 +52,7 @@ function violations(sourcePath: string, targetPath?: string): string[] {
   if (source.layer === 'domain' && (!target || !(target.module === source.module && target.layer === 'domain') && target.relative !== 'kernel/ports.ts')) failures.push('domain_dependency');
   if (source.layer === 'application' && target?.layer === 'infrastructure') failures.push('application_infrastructure_shortcut');
   if (source.layer === 'public' && target && target.area !== 'kernel' && target.layer !== 'public') failures.push('public_contract_private_dependency');
-  const interfaceAdapter = source.layer === 'interfaces' || (source.area === 'app' && !['app/main.ts', 'app/application.ts', 'app/migrate.ts'].includes(source.relative));
+  const interfaceAdapter = source.layer === 'interfaces' || (source.area === 'app' && !['app/main.ts', 'app/application.ts', 'app/migrate.ts', 'app/prune-sessions.ts'].includes(source.relative));
   if (interfaceAdapter && target && (target.layer === 'infrastructure' || target.layer === 'domain' || /\/application\/ports\.ts$/.test(target.relative))) failures.push('interface_private_dependency');
   return failures;
 }

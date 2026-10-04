@@ -1,7 +1,8 @@
-import type { SessionRecord, SessionStore } from '../../public/auth-contracts.js';
+import type { SessionRecord, SessionStore, SessionMaintenance } from '../../public/auth-contracts.js';
 import { RefreshTokenReuseError } from '../../public/auth-contracts.js';
+import { validateSessionCleanup } from './session-cleanup.js';
 
-export class InMemorySessionStore implements SessionStore {
+export class InMemorySessionStore implements SessionStore, SessionMaintenance {
   private readonly sessions = new Map<string, SessionRecord>();
   // Retain consumed digests so replay can identify and revoke the session family.
   private readonly refreshIndex = new Map<string, string>();
@@ -35,5 +36,15 @@ export class InMemorySessionStore implements SessionStore {
   async revoke(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (session) session.revoked = true;
+  }
+
+  async pruneExpired(now: number, limit = 100): Promise<number> {
+    validateSessionCleanup(now, limit);
+    const expired = [...this.sessions.values()].filter((session) => session.expiresAt <= now)
+      .sort((a, b) => a.expiresAt - b.expiresAt || a.id.localeCompare(b.id)).slice(0, limit);
+    const ids = new Set(expired.map((session) => session.id));
+    for (const id of ids) this.sessions.delete(id);
+    for (const [digest, id] of this.refreshIndex) if (ids.has(id)) this.refreshIndex.delete(digest);
+    return expired.length;
   }
 }

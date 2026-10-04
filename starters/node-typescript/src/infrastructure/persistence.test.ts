@@ -100,6 +100,57 @@ describe('PostgreSQL persistence and outbox', () => {
     return new RegisterUserHandler(users, events, database).execute(new RegisterUserCommand(email, 'demo-credential', id));
   }
 
+  it('prunes bounded expired SQL families atomically while keeping live replay history', async () => {
+    await register();
+    const sessions = new PostgresSessionStore(database);
+    for (const [id, expiry, revoked] of [['expired', 99, false], ['boundary', 100, true], ['active', 101, false], ['revoked-live', 102, true]] as const) {
+      await sessions.create({ id, userId: 'user-1', refreshDigest: `${id}-old`, expiresAt: expiry, revoked });
+    }
+    await sessions.rotate('expired-old', 'expired-current', 98);
+    await sessions.rotate('active-old', 'active-current', 98);
+    expect(await sessions.pruneExpired(100, 1)).toBe(1);
+    expect(await sessions.get('expired')).toBeNull();
+    expect((await database.query(`SELECT digest FROM identity.refresh_tokens WHERE session_id = 'expired'`)).rows).toEqual([]);
+    expect(await sessions.get('boundary')).not.toBeNull();
+    expect(await sessions.pruneExpired(100, 1)).toBe(1);
+    expect(await sessions.pruneExpired(100, 1)).toBe(0);
+    expect(await sessions.get('revoked-live')).not.toBeNull();
+    await expect(sessions.rotate('active-old', 'invalid-replay', 100)).rejects.toThrow('Invalid credentials');
+    expect(await sessions.get('active')).toMatchObject({ revoked: true });
+    expect((await database.query(`SELECT id FROM identity.users`)).rows).toEqual([{ id: 'user-1' }]);
+    expect((await database.query('SELECT id FROM identity.outbox')).rows).toHaveLength(1);
+  });
+
+  it('rolls back both session and refresh history cleanup with an enclosing transaction failure', async () => {
+    await register();
+    const sessions = new PostgresSessionStore(database);
+    await sessions.create({ id: 'expired', userId: 'user-1', refreshDigest: 'old-digest', expiresAt: 100, revoked: false });
+    await sessions.rotate('old-digest', 'current-digest', 99);
+    await expect(database.withinTransaction(async () => {
+      expect(await sessions.pruneExpired(100)).toBe(1);
+      throw new Error('Simulated maintenance failure');
+    })).rejects.toThrow('Simulated maintenance failure');
+    expect(await sessions.get('expired')).not.toBeNull();
+    expect((await database.query(`SELECT digest FROM identity.refresh_tokens WHERE session_id = 'expired' ORDER BY digest`)).rows).toEqual([{ digest: 'current-digest' }, { digest: 'old-digest' }]);
+  });
+
+  it('exposes bounded session cleanup through application composition', async () => {
+    await register();
+    await new PostgresSessionStore(database).create({ id: 'expired', userId: 'user-1', refreshDigest: 'digest', expiresAt: 100, revoked: false });
+    const app = await createApplication({ database, tokenKeys: { activeKeyId: 'test', keys: { test: randomBytes(32) } } });
+    expect(await app.pruneExpiredSessions(100, 1)).toBe(1);
+    expect(await app.pruneExpiredSessions(100, 1)).toBe(0);
+  });
+
+  it.each([[-1, 1], [100.5, 1], [Number.NaN, 1], [100, 0], [100, 1.5], [100, 1001]])('rejects unsafe SQL cleanup cutoff %s or limit %s without removing state', async (now, limit) => {
+    await register();
+    const sessions = new PostgresSessionStore(database);
+    await sessions.create({ id: 'expired', userId: 'user-1', refreshDigest: 'digest', expiresAt: 1, revoked: false });
+    await expect(sessions.pruneExpired(now, limit)).rejects.toThrow('Invalid session cleanup parameters');
+    expect(await sessions.get('expired')).not.toBeNull();
+    expect((await database.query('SELECT digest FROM identity.refresh_tokens')).rows).toEqual([{ digest: 'digest' }]);
+  });
+
   it.each(['identity', 'audit', 'notification'])('records the initial %s schema migration', async (module) => {
     const { rows } = await database.query<{ name: string | null }>('SELECT to_regclass($1)::text AS name', [`${module}.schema_migrations`]);
     expect(rows[0].name).toBe(`${module}.schema_migrations`);

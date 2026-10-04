@@ -5,6 +5,43 @@ import { JwtTokenService } from './jwt-token-service.js';
 import { InMemorySessionStore } from './in-memory-session-store.js';
 
 describe('session lifecycle', () => {
+  it('prunes only expired sessions and removes their complete refresh history', async () => {
+    const sessions = new InMemorySessionStore();
+    await sessions.create({ id: 'expired', userId: 'user-1', refreshDigest: 'old-digest', expiresAt: 100, revoked: false });
+    await sessions.rotate('old-digest', 'expired-current', 99);
+    await sessions.create({ id: 'active', userId: 'user-1', refreshDigest: 'active-old', expiresAt: 101, revoked: false });
+    await sessions.rotate('active-old', 'active-current', 99);
+    await sessions.create({ id: 'revoked', userId: 'user-1', refreshDigest: 'revoked-digest', expiresAt: 102, revoked: true });
+    expect(await sessions.pruneExpired(100)).toBe(1);
+    expect(await sessions.get('expired')).toBeNull();
+    expect(await sessions.get('revoked')).toMatchObject({ revoked: true });
+    await expect(sessions.rotate('expired-current', 'invalid', 100)).rejects.toThrow('Invalid credentials');
+    await expect(sessions.rotate('active-old', 'replay', 100)).rejects.toThrow('Invalid credentials');
+    expect(await sessions.get('active')).toMatchObject({ revoked: true });
+    // Reusing a fixture digest proves the removed family's history index was cleared.
+    await expect(sessions.create({ id: 'replacement', userId: 'user-1', refreshDigest: 'old-digest', expiresAt: 200, revoked: false })).resolves.toBeUndefined();
+  });
+
+  it('bounds cleanup batches and can repeat cleanup without affecting unexpired sessions', async () => {
+    const sessions = new InMemorySessionStore();
+    for (const [id, expiry] of [['early', 99], ['boundary', 100], ['active', 101]] as const) {
+      await sessions.create({ id, userId: 'user-1', refreshDigest: id, expiresAt: expiry, revoked: false });
+    }
+    expect(await sessions.pruneExpired(100, 1)).toBe(1);
+    expect(await sessions.get('early')).toBeNull();
+    expect(await sessions.get('boundary')).not.toBeNull();
+    expect(await sessions.pruneExpired(100, 1)).toBe(1);
+    expect(await sessions.pruneExpired(100, 1)).toBe(0);
+    expect(await sessions.get('active')).not.toBeNull();
+  });
+
+  it.each([[-1, 1], [100.5, 1], [Number.NaN, 1], [100, 0], [100, 1.5], [100, 1001]])('rejects unsafe cleanup cutoff %s or batch size %s without deleting state', async (now, limit) => {
+    const sessions = new InMemorySessionStore();
+    await sessions.create({ id: 'expired', userId: 'user-1', refreshDigest: 'digest', expiresAt: 1, revoked: false });
+    await expect(sessions.pruneExpired(now, limit)).rejects.toThrow('Invalid session cleanup parameters');
+    expect(await sessions.get('expired')).not.toBeNull();
+  });
+
   it('rotates refresh tokens, stores only digests, and retains the absolute expiry', async () => {
     let date = new Date('2026-10-02T00:00:00Z');
     const sessions = new InMemorySessionStore();

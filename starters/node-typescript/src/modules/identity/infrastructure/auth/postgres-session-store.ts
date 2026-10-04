@@ -1,10 +1,11 @@
 import type { SqlDatabase } from '../../../../kernel/sql.js';
-import type { SessionRecord, SessionStore } from '../../public/auth-contracts.js';
+import type { SessionRecord, SessionStore, SessionMaintenance } from '../../public/auth-contracts.js';
 import { RefreshTokenReuseError } from '../../public/auth-contracts.js';
+import { validateSessionCleanup } from './session-cleanup.js';
 
 type SessionRow = { id: string; user_id: string; refresh_digest: string; expires_at: string | number; revoked: boolean };
 
-export class PostgresSessionStore implements SessionStore {
+export class PostgresSessionStore implements SessionStore, SessionMaintenance {
   constructor(private readonly database: SqlDatabase) {}
 
   async create(session: SessionRecord): Promise<void> {
@@ -40,6 +41,19 @@ export class PostgresSessionStore implements SessionStore {
 
   async revoke(id: string): Promise<void> {
     await this.database.query('UPDATE identity.sessions SET revoked = true WHERE id = $1', [id]);
+  }
+
+  async pruneExpired(now: number, limit = 100): Promise<number> {
+    validateSessionCleanup(now, limit);
+    return this.database.withinTransaction(async () => {
+      const { rows } = await this.database.query<{ id: string }>(`SELECT id FROM identity.sessions
+        WHERE expires_at <= $1 ORDER BY expires_at, id FOR UPDATE SKIP LOCKED LIMIT $2`, [now, limit]);
+      if (!rows.length) return 0;
+      const ids = rows.map((row) => row.id);
+      await this.database.query('DELETE FROM identity.refresh_tokens WHERE session_id = ANY($1::text[])', [ids]);
+      const removed = await this.database.query('DELETE FROM identity.sessions WHERE id = ANY($1::text[])', [ids]);
+      return removed.rowCount;
+    });
   }
 
   private restore(row: SessionRow): SessionRecord {

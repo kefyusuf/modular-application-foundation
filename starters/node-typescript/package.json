@@ -12,6 +12,7 @@
     "start": "node dist/app/main.js",
     "dev": "tsx src/app/main.ts",
     "migrate": "tsx src/app/migrate.ts",
+    "prune:sessions": "tsx src/app/prune-sessions.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.test.json"
   },

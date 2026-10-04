@@ -38,6 +38,11 @@ export interface SessionStore {
   revoke(sessionId: string): Promise<void>;
 }
 
+export interface SessionMaintenance {
+  // Remove expired families and their refresh history in a bounded operation.
+  pruneExpired(now: number, limit?: number): Promise<number>;
+}
+
 export class RefreshTokenReuseError extends Error {
   constructor(public readonly userId: string, public readonly sessionId: string) {
     super('Invalid credentials');

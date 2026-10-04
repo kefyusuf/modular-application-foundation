@@ -89,5 +89,7 @@ export async function createApplication(options: { tokenKeys?: SigningKeyRing; d
   const commandBus = createInMemoryCommandBus(handlers);
 
   const handler = createHttpHandler({ commandBus, policyEvaluator, contexts });
-  return { handler, users, eventLog, audit, notifications, settings, outbox, close: async () => { await options.database?.close(); } };
+  return { handler, users, eventLog, audit, notifications, settings, outbox,
+    pruneExpiredSessions: sessions.pruneExpired.bind(sessions),
+    close: async () => { await options.database?.close(); } };
 }
