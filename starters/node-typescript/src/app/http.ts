@@ -120,7 +120,11 @@ export function createHttpHandler(deps: {
           problem(409, 'Conflict');
           return;
         }
-        problem(400, 'Request failed', message);
+        if (message === 'Invalid JSON body') {
+          problem(400, 'Invalid request');
+          return;
+        }
+        problem(500, 'Internal server error');
       }
       return;
     }
@@ -150,7 +154,11 @@ export function createHttpHandler(deps: {
           problem(429, 'Too many requests', message);
           return;
         }
-        problem(400, 'Request failed', message);
+        if (message === 'Invalid JSON body') {
+          problem(400, 'Invalid request');
+          return;
+        }
+        problem(500, 'Internal server error');
       }
       return;
     }
