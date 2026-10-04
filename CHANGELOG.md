@@ -4,6 +4,7 @@
 
 ### Added
 
+- Real Node consumer process termination/recovery tests on PostgreSQL, preserving partial/full effects across lease reclamation without duplicate audit entries or queued notifications.
 - Read-only PostgreSQL outbox delivery summaries and an explicit JSON status CLI, with pending-state partition, expiry boundaries, and read-only driver coverage.
 - Disposable Docker PostgreSQL verification through the production driver, covering transaction isolation, refresh contention, concurrent cleanup, outbox claims, and stale lease acknowledgements.
 - Loopback fixture target guards and bounded database lock/statement timeouts for the optional integration suite.

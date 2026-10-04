@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { setTimeout } from 'node:timers/promises';
+import { fork } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { PostgresDatabase } from './postgres.js';
 import { runMigrations } from './migrations.js';
 import { identityMigrations } from '../modules/identity/infrastructure/persistence/schema.js';
@@ -7,6 +9,8 @@ import { PostgresSessionStore } from '../modules/identity/infrastructure/auth/po
 import { RefreshTokenReuseError } from '../modules/identity/public/auth-contracts.js';
 import { PostgresOutboxDispatcher, PostgresOutboxEventBus } from '../modules/identity/infrastructure/persistence/postgres-outbox.js';
 import { PostgresOutboxStatusReader } from '../modules/identity/infrastructure/persistence/postgres-outbox-status.js';
+import { auditMigrations } from '../modules/audit/infrastructure/schema.js';
+import { notificationMigrations } from '../modules/notification/infrastructure/schema.js';
 
 const connectionString = process.env.FOUNDATION_POSTGRES_TEST_URL;
 
@@ -53,10 +57,12 @@ describe.skipIf(!connectionString)('external PostgreSQL connections', () => {
     first = new PostgresDatabase(connectionString!);
     second = new PostgresDatabase(connectionString!);
     await runMigrations(first, 'identity', identityMigrations);
+    await runMigrations(first, 'audit', auditMigrations);
+    await runMigrations(first, 'notification', notificationMigrations);
   }, 15000);
 
   beforeEach(async () => {
-    await first.query('TRUNCATE identity.refresh_tokens, identity.sessions, identity.outbox, identity.users');
+    await first.query('TRUNCATE identity.refresh_tokens, identity.sessions, identity.outbox, identity.users, audit.entries, notification.messages');
     await first.query("INSERT INTO identity.users VALUES ('user-1', 'user@example.com', 'fixture', 1)");
   });
 
@@ -184,8 +190,74 @@ describe.skipIf(!connectionString)('external PostgreSQL connections', () => {
   });
 
   async function publish() {
-    await new PostgresOutboxEventBus(first).publish({ type: 'identity.user.registered.v1', occurredAt: new Date().toISOString(), data: { userId: 'user-1' } });
+    await new PostgresOutboxEventBus(first).publish({ type: 'identity.user.registered.v1', occurredAt: new Date().toISOString(), data: { userId: 'user-1', email: 'user@example.com' } });
   }
+
+  async function bounded<T>(promise: Promise<T>, label: string): Promise<T> {
+    let timer!: ReturnType<typeof globalThis.setTimeout>;
+    try {
+      return await Promise.race([promise, new Promise<never>((_, reject) => {
+        timer = globalThis.setTimeout(() => reject(new Error(`Worker ${label} timed out`)), 4000);
+      })]);
+    } finally { globalThis.clearTimeout(timer); }
+  }
+
+  function worker(mode: string) {
+    const child = fork(fileURLToPath(new URL('../../scripts/postgres-consumer-worker.mjs', import.meta.url)), [mode], {
+      execArgv: [], stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+      env: { ...process.env, DATABASE_URL: '', FOUNDATION_POSTGRES_TEST_URL: connectionString! },
+    });
+    let stderr = '';
+    child.stderr?.on('data', (data) => { stderr = (stderr + String(data)).slice(-2000); });
+    const exited = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
+      child.once('exit', (code, signal) => resolve({ code, signal }));
+      child.once('error', () => resolve({ code: 1, signal: null }));
+    });
+    const message = new Promise<{ phase: string; result?: { delivered: number; failed: number } }>((resolve, reject) => {
+      child.once('message', (value) => resolve(value as { phase: string; result?: { delivered: number; failed: number } }));
+      child.once('error', reject);
+      child.once('exit', () => reject(new Error(`Worker exited before checkpoint: ${stderr}`)));
+    });
+    return { child, exited, message };
+  }
+
+  it.each(['after-audit', 'after-effects'])('recovers from a killed consumer process %s without repeating durable effects', async (phase) => {
+    await publish();
+    const crashed = worker(phase);
+    let recovered: ReturnType<typeof worker> | undefined;
+    try {
+      expect(await bounded(crashed.message, 'checkpoint')).toEqual({ phase });
+      const auditBefore = (await second.query('SELECT event_id, entry FROM audit.entries')).rows;
+      expect(auditBefore).toHaveLength(1);
+      const notificationBefore = (await second.query('SELECT event_id, message, status FROM notification.messages')).rows;
+      expect(notificationBefore).toHaveLength(phase === 'after-audit' ? 0 : 1);
+      expect(crashed.child.kill('SIGKILL')).toBe(true);
+      expect((await bounded(crashed.exited, 'forced exit')).code).not.toBe(0);
+      expect(await new PostgresOutboxStatusReader(second).read()).toMatchObject({ pending: 1, leased: 1, delivered: 0 });
+      expect(await new PostgresOutboxDispatcher(second, { publish: async () => { throw new Error('Active lease must not be delivered'); } }).drain(1))
+        .toEqual({ delivered: 0, failed: 0 });
+      // Advance only this fixture's lease instead of waiting the full 30 seconds.
+      await second.query("UPDATE identity.outbox SET claimed_until = now() - interval '1 second'");
+      recovered = worker('complete');
+      expect(await bounded(recovered.message, 'recovery')).toEqual({ phase: 'complete', result: { delivered: 1, failed: 0 } });
+      expect((await bounded(recovered.exited, 'recovery exit')).code).toBe(0);
+      expect((await second.query('SELECT event_id, entry FROM audit.entries')).rows).toEqual(auditBefore);
+      const notification = (await second.query('SELECT event_id, message, status FROM notification.messages')).rows;
+      const outbox = (await second.query('SELECT id, attempts, claim_id FROM identity.outbox WHERE delivered_at IS NOT NULL')).rows;
+      expect(outbox).toEqual([{ id: (auditBefore[0] as { event_id: string }).event_id, attempts: 2, claim_id: null }]);
+      expect(notification).toEqual([{ event_id: (outbox[0] as { id: string }).id, status: 'pending',
+        message: { channel: 'email', to: 'user@example.com', subject: 'Welcome', body: 'Your account was created.' } }]);
+      if (phase === 'after-effects') expect(notification).toEqual(notificationBefore);
+    } finally {
+      for (const running of [crashed, recovered]) {
+        if (!running) continue;
+        // Attach a rejection handler even if an earlier assertion prevented checkpoint consumption.
+        void running.message.catch(() => {});
+        if (running.child.exitCode === null && running.child.signalCode === null) running.child.kill('SIGKILL');
+        await bounded(running.exited, 'cleanup');
+      }
+    }
+  });
 
   it('reads a typed pending summary in a PostgreSQL read-only transaction', async () => {
     await publish();
