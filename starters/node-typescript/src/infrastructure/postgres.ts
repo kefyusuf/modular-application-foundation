@@ -23,16 +23,27 @@ export class PostgresDatabase implements SqlDatabase {
     if (this.context.getStore()) return fn();
     const client = await this.pool.connect();
     let discard = false;
+    let connectionError: Error | undefined;
+    const onConnectionError = (error: Error) => {
+      discard = true;
+      if (connectionError) return;
+      connectionError = error;
+      console.error('PostgreSQL transaction connection failed; transaction cannot continue');
+    };
+    // Checked-out clients no longer have the pool's idle error listener.
+    client.on('error', onConnectionError);
     try {
       await client.query('BEGIN');
       const result = await this.context.run(client, fn);
+      if (connectionError) throw connectionError;
       await client.query('COMMIT');
       return result;
     } catch (error) {
       try { await client.query('ROLLBACK'); } catch { discard = true; }
       throw error;
     } finally {
-      client.release(discard);
+      try { client.release(discard); }
+      finally { client.removeListener('error', onConnectionError); }
     }
   }
 
