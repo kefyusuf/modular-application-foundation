@@ -10,6 +10,7 @@ paths:
     post:
       operationId: login
       summary: Authenticate a user
+      description: The reference HTTP adapter rejects JSON bodies larger than 65536 bytes.
       tags: [identity]
       security: []
       parameters:
@@ -40,6 +41,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
+        '413':
+          description: JSON body exceeds the reference adapter's 65536-byte limit
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
         '429':
           description: Login attempts exceeded the configured limit
           content:
@@ -50,7 +57,7 @@ paths:
     post:
       operationId: refreshSession
       summary: Rotate the refresh token for an active session
-      description: Reuse of a consumed refresh token revokes the entire session family. Session expiry is absolute and is not extended by refresh.
+      description: Reuse of a consumed refresh token revokes the entire session family. Session expiry is absolute and is not extended by refresh. The reference HTTP adapter rejects JSON bodies larger than 65536 bytes.
       tags: [identity]
       security: []
       parameters:
@@ -77,6 +84,12 @@ paths:
                 $ref: '#/components/schemas/ProblemDetails'
         '401':
           description: Invalid, expired, revoked, or reused refresh token
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '413':
+          description: JSON body exceeds the reference adapter's 65536-byte limit
           content:
             application/problem+json:
               schema:

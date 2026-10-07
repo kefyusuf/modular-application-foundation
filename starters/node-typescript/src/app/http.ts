@@ -17,6 +17,8 @@ import { RefreshSessionCommand } from '../modules/identity/application/features/
 import { refreshSessionInput } from '../modules/identity/application/features/refresh-session/validator.js';
 import { LogoutCommand } from '../modules/identity/application/features/logout/command.js';
 
+const maxJsonBodyBytes = 64 * 1024;
+
 export function createHttpHandler(deps: {
   commandBus: CommandBus;
   policyEvaluator: PolicyEvaluator;
@@ -24,6 +26,7 @@ export function createHttpHandler(deps: {
 }) {
   const handle = async (req: IncomingMessage, res: ServerResponse, meta: RequestMetadata): Promise<void> => {
     const problem = (status: number, title: string, detail?: string) => {
+      if (status === 413) res.setHeader('connection', 'close');
       if (status === 401) res.setHeader('www-authenticate', 'Bearer');
       writeProblem(res, status, title, detail, { ...meta, instance: req.url });
     };
@@ -33,6 +36,7 @@ export function createHttpHandler(deps: {
       else if (message === 'Forbidden') problem(403, 'Forbidden');
       else if (message === 'Too many attempts') problem(429, 'Too many requests');
       else if (message === 'Invalid JSON body') problem(400, 'Invalid request');
+      else if (message === 'Request body too large') problem(413, 'Content too large');
       else problem(500, 'Internal server error');
     };
 
@@ -120,6 +124,10 @@ export function createHttpHandler(deps: {
           problem(409, 'Conflict');
           return;
         }
+        if (message === 'Request body too large') {
+          problem(413, 'Content too large');
+          return;
+        }
         if (message === 'Invalid JSON body') {
           problem(400, 'Invalid request');
           return;
@@ -154,6 +162,10 @@ export function createHttpHandler(deps: {
           problem(429, 'Too many requests', message);
           return;
         }
+        if (message === 'Request body too large') {
+          problem(413, 'Content too large');
+          return;
+        }
         if (message === 'Invalid JSON body') {
           problem(400, 'Invalid request');
           return;
@@ -174,8 +186,13 @@ export function createHttpHandler(deps: {
 
 async function readJson(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.from(chunk));
+  let bytes = 0;
+  // Preserve the socket on iterator exit so the client can receive HTTP 413.
+  for await (const chunk of req.iterator({ destroyOnReturn: false })) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.length;
+    if (bytes > maxJsonBodyBytes) throw new Error('Request body too large');
+    chunks.push(buffer);
   }
   const raw = Buffer.concat(chunks).toString('utf8');
   if (!raw) {

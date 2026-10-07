@@ -32,6 +32,7 @@
 
 ### Changed
 
+- Bound reference identity JSON request bodies to 64 KiB and return HTTP 413 before parsing oversized payloads, with OpenAPI responses and real HTTP boundary coverage.
 - Update commit-pinned GitHub Actions to native Node 24 runtimes while preserving Node 20/22 reference verification.
 - Reject PostgreSQL transactions when COMMIT reports ROLLBACK after a caught SQL error instead of returning an unpersisted success result.
 - Return sanitized HTTP 500 problem responses for unexpected registration and legacy login failures instead of exposing infrastructure error messages as client errors.

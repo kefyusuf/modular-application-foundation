@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:http';
+import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApplication } from './application.js';
@@ -82,6 +82,69 @@ describe('HTTP adapter with real module wiring', () => {
       body: JSON.stringify(body),
     });
   }
+
+  it('rejects oversized registration JSON with a sanitized 413 response', async () => {
+    const response = await post('/api/v1/identity/users', {
+      email: 'oversized@example.com', passwordHash: 'x'.repeat(65536),
+    }, 'admin');
+    expect(response.status).toBe(413);
+    expect(response.headers.get('content-type')).toBe('application/problem+json');
+    const problem = await response.json();
+    expect(problem).toMatchObject({ status: 413, title: 'Content too large' });
+    expect(problem).not.toHaveProperty('detail');
+    expect(problem.request_id).toBe(response.headers.get('x-request-id'));
+  });
+
+  it('accepts valid registration JSON at exactly 65536 bytes', async () => {
+    const json = JSON.stringify({ email: 'at-limit@example.com', password: 'a-long-password' });
+    const response = await fetch(`${baseUrl}/api/v1/identity/users`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-actor-roles': 'admin' },
+      body: json.padEnd(65536, ' '),
+    });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ email: 'at-limit@example.com' });
+  });
+
+  it.each([
+    ['/api/v1/identity/login', undefined],
+    ['/api/v1/identity/auth/login', 'login'],
+    ['/api/v1/identity/auth/refresh', 'refreshSession'],
+  ])('rejects oversized JSON before validating fields at %s', async (path, operation) => {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}'.padEnd(65537, ' '),
+    });
+    if (operation) await expectContract(response, operation, 413);
+    else {
+      expect(response.status).toBe(413);
+      expect(await response.json()).toMatchObject({ status: 413, title: 'Content too large' });
+    }
+  });
+
+  it('counts UTF-8 bytes rather than string characters for the body limit', async () => {
+    const response = await post('/api/v1/identity/users', {
+      email: 'unicode-limit@example.com', passwordHash: 'é'.repeat(40000),
+    }, 'admin');
+    expect(response.status).toBe(413);
+    await response.json();
+  });
+
+  it('returns 413 for an oversized chunked body without a Content-Length header', async () => {
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = request(`${baseUrl}/api/v1/identity/users`, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-actor-roles': 'admin' },
+      }, (res) => {
+        res.resume();
+        res.once('end', () => resolve(res.statusCode!));
+        res.once('error', reject);
+      });
+      req.once('error', reject);
+      req.setTimeout(3000, () => req.destroy(new Error('Chunked response timeout')));
+      req.write('{}');
+      req.write(' '.repeat(32767));
+      req.end(' '.repeat(32768));
+    });
+    expect(status).toBe(413);
+  });
 
   it.each([
     ['/api/v1/identity/users', { email: 'failure@example.com', password: 'a-long-password' }, 'save'],
