@@ -35,14 +35,17 @@ components:
           const: '1.0'
         id:
           type: string
+          minLength: 1
         source:
           type: string
+          pattern: '^mod://[a-z0-9-]+$'
           example: mod://identity
         type:
           type: string
           const: identity.user.registered.v1
         subject:
           type: string
+          minLength: 1
           example: user/usr_123
         time:
           type: string
@@ -52,6 +55,7 @@ components:
           const: application/json
         correlationid:
           type: string
+          minLength: 1
         causationid:
           type: string
         tenantid:

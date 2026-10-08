@@ -127,9 +127,11 @@ src/
 
 `npm test` runs unit tests, HTTP integration tests, and architecture checks. `npm run typecheck` checks both production and test sources; `npm run build` emits only production sources.
 
+The persistence suite validates the stored registration envelope against the generic [JSON Schema](../../contracts/json-schema/events/cloudevent-envelope.schema.json) and the payload schema referenced by the AsyncAPI `UserRegistered` message. Negative fixtures cover envelope metadata and registration payload drift. CI also runs when only AsyncAPI or JSON Schema files change. These checks validate the embedded payload schema, not the complete AsyncAPI document, other event types, or backward compatibility.
+
 ### Pull request verification
 
-The [Node TypeScript workflow](../../.github/workflows/node-typescript.yml) runs for pull requests against any base branch, pushes to `main`, and manual dispatch. Automatic runs are scoped to starter, workflow, and OpenAPI changes. Each Node 20/22 job installs the lockfile, checks production/test types, runs the standard suite, and builds/runs the disposable PostgreSQL suite. The Node 22 job also rejects high or critical dependency advisories with `npm audit`. JUnit output and compiled sources are retained as review artifacts for seven days; jobs have a fifteen-minute limit.
+The [Node TypeScript workflow](../../.github/workflows/node-typescript.yml) runs for pull requests against any base branch, pushes to `main`, and manual dispatch. Automatic runs are scoped to starter, workflow, OpenAPI, AsyncAPI, and JSON Schema changes. Each Node 20/22 job installs the lockfile, checks production/test types, runs the standard suite, and builds/runs the disposable PostgreSQL suite. The Node 22 job also rejects high or critical dependency advisories with `npm audit`. JUnit output and compiled sources are retained as review artifacts for seven days; jobs have a fifteen-minute limit.
 
 Actions are pinned by commit, checkout does not persist credentials, and the workflow requests only repository read access. It has no deployment/publishing step or application-secret requirement. Existing architecture, exercised API schema, migration, producer/consumer, and failure-recovery cases form the initial automated gates. This is not the complete [CI/CD standard](../../docs/standards/ci-cd.md): full contract compatibility, secret/SAST/license scanning, and container vulnerability scanning remain separate release requirements. The workflow does not configure branch protection or prove earlier stacked PRs passed it.
 
@@ -305,6 +307,6 @@ Registration publishes `identity.user.registered.v1`; the subscribers record an 
 - The default `createImmediateTransactionManager` has no commit/rollback semantics. PostgreSQL mode provides rollback for producer changes, while subscriber effects remain outside that transaction.
 - Outbox delivery uses in-process subscribers with durable local effect deduplication in PostgreSQL mode. No external broker or email delivery provider is implemented; external effects are not covered by this deduplication.
 - PostgreSQL enforces normalized-email uniqueness and optimistic user versions. No settings HTTP API or timed login unlock is implemented.
-- Tests cover registration, policy, subscribers, concurrency, login, settings, HTTP integration, authentication adapters, session cleanup boundaries/limits/rollback, exercised OpenAPI responses, and module/layer imports. Full event contract conformance and manifest validation remain future work.
+- Tests cover registration, policy, subscribers, concurrency, login, settings, HTTP integration, authentication adapters, session cleanup boundaries/limits/rollback, exercised OpenAPI responses, the registration outbox envelope and message payload, and module/layer imports. Other event types, complete AsyncAPI document validation, compatibility checks, and manifest validation remain future work.
 
 The architecture is the product here, not the demo features.
