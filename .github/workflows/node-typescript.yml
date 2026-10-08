@@ -6,12 +6,16 @@ on:
       - '.github/workflows/node-typescript.yml'
       - 'starters/node-typescript/**'
       - 'contracts/openapi/**'
+      - 'contracts/asyncapi/**'
+      - 'contracts/json-schema/**'
   push:
     branches: [main]
     paths:
       - '.github/workflows/node-typescript.yml'
       - 'starters/node-typescript/**'
       - 'contracts/openapi/**'
+      - 'contracts/asyncapi/**'
+      - 'contracts/json-schema/**'
   workflow_dispatch:
 
 permissions:

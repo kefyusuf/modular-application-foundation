@@ -4,6 +4,8 @@
 
 ### Added
 
+- Registration outbox envelope checks against the published JSON Schema and AsyncAPI message payload, with negative fixtures and CI triggers for event contract changes.
+
 - GitHub Actions verification for the Node/TypeScript reference implementation on Node 20/22, including architecture/HTTP/persistence tests, PostgreSQL worker checks, dependency audit, and retained review artifacts.
 - Executing-query cancellation/termination tests on PostgreSQL, with server-side execution gating, original error codes, producer rollback, healthy-client reuse or replacement, and no callback replay.
 - Checked-out transaction connection-loss coverage proving producer rollback, original error propagation, no callback replay, and later transaction recovery in the same worker.
@@ -32,6 +34,7 @@
 
 ### Changed
 
+- Aligned the AsyncAPI registration envelope with the generic envelope constraints for nonempty IDs, subjects, correlation IDs, and module source URIs.
 - Bound reference identity JSON request bodies to 64 KiB and return HTTP 413 before parsing oversized payloads, with OpenAPI responses and real HTTP boundary coverage.
 - Patch the transitive development dependency source-map-js to 1.2.2 after the verification audit reported GHSA-68fv-2mgg-jv7q.
 - Update commit-pinned GitHub Actions to native Node 24 runtimes while preserving Node 20/22 reference verification.

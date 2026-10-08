@@ -1,4 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { readFileSync } from 'node:fs';
+import { Ajv2020 } from 'ajv/dist/2020.js';
+import { fullFormats } from 'ajv-formats/dist/formats.js';
+import { parse } from 'yaml';
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -35,6 +39,68 @@ import { InMemoryNotificationSender } from '../modules/notification/infrastructu
 import { createAuditSubscriber } from '../modules/audit/application/on-user-registered.js';
 import { createWelcomeEmailSubscriber } from '../modules/notification/application/on-user-registered.js';
 import { createSubscribingEventBus } from '../kernel/event-router.js';
+
+const eventAjv = new Ajv2020({ strict: false, allErrors: true });
+for (const [name, format] of Object.entries(fullFormats)) eventAjv.addFormat(name, format);
+const envelopeSchema = JSON.parse(readFileSync(new URL('../../../../contracts/json-schema/events/cloudevent-envelope.schema.json', import.meta.url), 'utf8'));
+const eventContract = parse(readFileSync(new URL('../../../../contracts/asyncapi/events.v1.yml', import.meta.url), 'utf8')) as {
+  components: { messages: { UserRegistered: { payload: { $ref: string } } }; schemas: Record<string, object> };
+};
+const payloadRef = eventContract.components.messages.UserRegistered.payload.$ref;
+if (!payloadRef.startsWith('#/components/schemas/')) throw new Error('Expected a local UserRegistered payload schema');
+const payloadSchema = eventContract.components.schemas[payloadRef.slice('#/components/schemas/'.length)];
+if (!payloadSchema) throw new Error('UserRegistered payload schema is missing');
+const validateEnvelope = eventAjv.compile(envelopeSchema);
+const validateRegistration = eventAjv.compile(payloadSchema);
+const registrationEnvelope = {
+  specversion: '1.0', id: 'event-123', source: 'mod://identity', type: 'identity.user.registered.v1',
+  subject: 'user/user-123', time: '2026-10-08T00:00:00Z', datacontenttype: 'application/json',
+  correlationid: 'request-123', data: { user_id: 'user-123', email: 'user@example.com' },
+};
+
+describe('public registration event contract', () => {
+  it('accepts a valid registration and preserves envelope extensions', () => {
+    const valid = { ...registrationEnvelope, extension: 'consumer-metadata' };
+    expect(validateEnvelope(valid), JSON.stringify(validateEnvelope.errors)).toBe(true);
+    expect(validateRegistration(valid), JSON.stringify(validateRegistration.errors)).toBe(true);
+  });
+  it('rejects an empty event ID in both published schemas', () => {
+    const invalid = { ...registrationEnvelope, id: '' };
+    expect(validateEnvelope(invalid)).toBe(false);
+    expect(validateRegistration(invalid)).toBe(false);
+  });
+  it.each(['subject', 'correlationid'])('rejects empty %s in both published schemas', (field) => {
+    const invalid = { ...registrationEnvelope, [field]: '' };
+    expect(validateEnvelope(invalid)).toBe(false);
+    expect(validateRegistration(invalid)).toBe(false);
+  });
+  it('rejects a malformed module source in both published schemas', () => {
+    const invalid = { ...registrationEnvelope, source: 'identity' };
+    expect(validateEnvelope(invalid)).toBe(false);
+    expect(validateRegistration(invalid)).toBe(false);
+  });
+  it('rejects an invalid timestamp in both published schemas', () => {
+    const invalid = { ...registrationEnvelope, time: 'yesterday' };
+    expect(validateEnvelope(invalid)).toBe(false);
+    expect(validateRegistration(invalid)).toBe(false);
+  });
+  it.each([
+    { userId: 'user-123', email: 'user@example.com' },
+    { user_id: 'user-123' },
+    { user_id: 'user-123', email: 'invalid-email' },
+    { user_id: 'user-123', email: 'user@example.com', password_digest: 'private' },
+  ])('rejects registration-specific payload drift: %j', (data) => {
+    const invalid = { ...registrationEnvelope, data };
+    expect(validateEnvelope(invalid)).toBe(true);
+    expect(validateRegistration(invalid)).toBe(false);
+  });
+  it.each([
+    { type: 'identity.user.registered.v2' },
+    { datacontenttype: 'text/plain' },
+  ])('rejects registration message metadata drift: %j', (metadata) => {
+    expect(validateRegistration({ ...registrationEnvelope, ...metadata })).toBe(false);
+  });
+});
 
 const migrateIdentity = (database: SqlDatabase) => runMigrations(database, 'identity', identityMigrations);
 const migrateAudit = (database: SqlDatabase) => runMigrations(database, 'audit', auditMigrations);
@@ -311,6 +377,8 @@ describe('PostgreSQL persistence and outbox', () => {
     const { rows } = await database.query<{ envelope: { specversion: string; type: string; data: object }; delivered_at: unknown }>('SELECT envelope, delivered_at FROM identity.outbox');
     expect(rows).toHaveLength(1);
     expect(rows[0].envelope).toMatchObject({ specversion: '1.0', type: 'identity.user.registered.v1', data: { user_id: 'user-1', email: 'user@example.com' } });
+    expect(validateEnvelope(rows[0].envelope), JSON.stringify(validateEnvelope.errors)).toBe(true);
+    expect(validateRegistration(rows[0].envelope), JSON.stringify(validateRegistration.errors)).toBe(true);
     expect(rows[0].delivered_at).toBeNull();
   });
 
